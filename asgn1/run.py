@@ -23,7 +23,7 @@ def build_grid(x_range, y_range, res, obstacles = []):
     # X-Value Linespace
     width = np.linspace(x_range[0],x_range[1], int((x_range[1] - x_range[0])/res) + 1)
     # Y-Value Linespace
-    height = np.linspace(y_range[0],y_range[1], int((y_range[1] - y_range[0])/res) + 1)
+    height = np.flip(np.linspace(y_range[0],y_range[1], int((y_range[1] - y_range[0])/res) + 1))
 
     # Truncate the Values in the Linespaces
     width = np.round(width,decimals=rnd)
@@ -53,8 +53,8 @@ def build_grid(x_range, y_range, res, obstacles = []):
             # Compute Corresponding Map Position of Obstacle
             x_indx = int(np.where(width == round(x - offset,rnd))[0][0])
             y_indx = int(np.where(height == round(y - offset,rnd))[0][0])
-
-            grid_vals[y_indx : y_indx + 7,
+            
+            grid_vals[y_indx - 7 : y_indx,
                       x_indx : x_indx + 7] = obstacle_arr
             
             x_indx_c = int(np.where(width == round(x,rnd))[0][0])
@@ -172,19 +172,19 @@ def A_star (map_vals, res, start, goal):
 
     return closed_set, []
 
-Res = 0.1
+Res = 1
 
 w,h,grid = build_grid([-2.0,5.0], [-6.0,6.0], Res, obstacle_locations)
 
-# c_set, path = A_star([w,h,grid], Res, (0.5,-1.5),(0.5,1.5))
+c_set, path = A_star([w,h,grid], Res, (0.5,-1.5),(0.5,1.5))
 # c_set, path = A_star([w,h,grid], Res, (4.5,3.5),(4.5,-1.5))
 # c_set, path = A_star([w,h,grid], Res, (-0.5,-5.5),(1.5,-3.5))
 
-c_set, path = A_star([w,h,grid], Res, (2.45,-3.55),(0.95,-1.55))
+# c_set, path = A_star([w,h,grid], Res, (2.45,-3.55),(0.95,-1.55))
 # c_set, path = A_star([w,h,grid], Res, (4.95,-0.05),(2.45,0.25))
 # c_set, path = A_star([w,h,grid], Res, (-0.55,-1.45),(1.95,3.95))
 print(path)
-
+print(grid)
 
 for p in path:
     x_indx = int(np.where(w == p[0])[0][0])
@@ -195,7 +195,7 @@ for p in path:
 cmap = colors.ListedColormap(['white', 'black', 'lime'])
 
 plt.figure(figsize=(8,12))
-plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, len(w)*Res - 2, len(h)*Res - 6, -6])
+plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, len(w)*Res - 2 , -6, len(h)*Res - 6])
 
 x_ticks = np.arange(-2, len(w)*Res - 2, Res)
 y_ticks = np.arange(-6, len(h)*Res - 6, Res)
