@@ -52,10 +52,15 @@ def build_grid(x_range, y_range, res, obstacles = []):
 
             # Compute Corresponding Map Position of Obstacle
             x_indx = int(np.where(width == round(x - offset,rnd))[0][0])
-            y_indx = int(np.where(height == round(y + offset,rnd))[0][0])
+            y_indx = int(np.where(height == round(y - offset,rnd))[0][0])
 
             grid_vals[y_indx : y_indx + 7,
                       x_indx : x_indx + 7] = obstacle_arr
+            
+            x_indx_c = int(np.where(width == round(x,rnd))[0][0])
+            y_indx_c = int(np.where(height == round(y,rnd))[0][0])
+
+            grid_vals[y_indx_c][x_indx_c] = 1
 
         else: 
             
@@ -69,7 +74,9 @@ def build_grid(x_range, y_range, res, obstacles = []):
     return width, height, grid_vals
 
 def H(node_s, node_g):
-    return np.sqrt((node_g[0] - node_s[0])**2 + (node_g[0] - node_s[0])**2)
+    return np.sqrt((node_g[0] - node_s[0])**2 + (node_g[1] - node_s[1])**2)
+
+    # return max((abs(node_g[0]-node_s[0]),abs(node_g[1]-node_s[1])))
 
 
 def A_star (map_vals, res, start, goal):
@@ -80,8 +87,8 @@ def A_star (map_vals, res, start, goal):
         rnd = 0
     
 
-    goal = (round(goal[0],0), round(goal[1],rnd))
-    start = (round(start[0],0), round(start[1],rnd))
+    goal = (round(goal[0], rnd), round(goal[1], rnd))
+    start = (round(start[0], rnd), round(start[1], rnd))
 
 
     width, height, Map = map_vals
@@ -101,7 +108,6 @@ def A_star (map_vals, res, start, goal):
     # 8 Neighbor Directions to Check
     nieghbor_dirs = [(-res,-res),(-res,0),(-res,res),(0,res),(res,res),(res,0),(res,-res),(0,-res)]
 
-
     while len(open_set) != 0:
         
         open_set = sorted(open_set)
@@ -118,20 +124,17 @@ def A_star (map_vals, res, start, goal):
 
                 path.append(parent[child])
                 child = parent[child]
-            
+
             path.reverse()
 
             closed_set.append(curr_node)
 
             return closed_set, path
-        
 
         if curr_node in closed_set:
             continue
 
-
         closed_set.append(curr_node)
-
 
         for n in nieghbor_dirs:
 
@@ -146,8 +149,6 @@ def A_star (map_vals, res, start, goal):
             # Bounds the Search
             if not (-2 <= nx < round(len(width)*Res -2,rnd) and -6 <= ny < round(len(height)*Res -6,rnd)):
                 continue
-            
-            # print(ny, round(len(height)*Res -6,rnd), width)
 
             # Check if Neighbor is an Obstalce
             map_x = int(np.where(width == nx)[0][0])
@@ -173,20 +174,23 @@ def A_star (map_vals, res, start, goal):
 
 Res = 0.1
 
-
 w,h,grid = build_grid([-2.0,5.0], [-6.0,6.0], Res, obstacle_locations)
 
-c_set, path = A_star([w,h,grid], Res, (0.5,-1.5),(0.5,1.5))
-c_set, path = A_star([w,h,grid], Res, (4.5,3.5),(4.5,-1.5))
-c_set, path = A_star([w,h,grid], Res, (-0.5,-5.5),(1.5,-3.5))
-
+# c_set, path = A_star([w,h,grid], Res, (0.5,-1.5),(0.5,1.5))
+# c_set, path = A_star([w,h,grid], Res, (4.5,3.5),(4.5,-1.5))
+# c_set, path = A_star([w,h,grid], Res, (-0.5,-5.5),(1.5,-3.5))
 
 c_set, path = A_star([w,h,grid], Res, (2.45,-3.55),(0.95,-1.55))
+# c_set, path = A_star([w,h,grid], Res, (4.95,-0.05),(2.45,0.25))
+# c_set, path = A_star([w,h,grid], Res, (-0.55,-1.45),(1.95,3.95))
+print(path)
+
 
 for p in path:
     x_indx = int(np.where(w == p[0])[0][0])
     y_indx = int(np.where(h == p[1])[0][0])
     grid[y_indx][x_indx] = 2
+
 
 cmap = colors.ListedColormap(['white', 'black', 'lime'])
 
@@ -202,6 +206,4 @@ plt.grid(True, color='gray', linewidth = Res*1.5)
 plt.title("World")
 plt.xlabel("X [m]")
 plt.ylabel("Y [m]")
-# plt.show()
-
-
+plt.show()
