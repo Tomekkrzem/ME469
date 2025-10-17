@@ -371,7 +371,7 @@ def Online_A_Star(map_vals, res, start, goal):
 Res = 1
 Res2 = 0.1
 
-s_g_list_step = [[Res,(0.5,-1.5),(0.5,1.5),0],        # STEP 3 START-GOAL POSITIONS
+s_g_list_step = [[Res,(0.5,-1.5),(0.5,1.5),0],       # STEP 3 START-GOAL POSITIONS
                  [Res,(4.5,3.5),(4.5,-1.5),0],
                  [Res,(-0.5,5.5),(1.5,-3.5),0],
                   
@@ -453,6 +453,13 @@ for s_g in s_g_list_step:
     plt.figure(figsize=(6,10))
     # Display 2D Grid
     plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res - 2 , -6, grid_height*Res - 6])
+
+    # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
+    ax = plt.gca()
+
+    # Check that the Value to Label is a Multiple of 0.5 
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
 
     # Create Grid Lines
     x_ticks = np.arange(-2, grid_width*Res - 2, Res)
