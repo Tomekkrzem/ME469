@@ -9,7 +9,6 @@ x_start = 1.29812900
 y_start = 1.88315210
 theta_start = 2.82870000 
 
-
 # FILEPATHS
 # Filepath for Control Data
 control_dir = os.path.dirname(os.path.abspath(__file__))
@@ -31,8 +30,6 @@ measurement_fp = os.path.join(measurement_dir, "ds0_Measurement.dat")
 barcode_dir = os.path.dirname(os.path.abspath(__file__))
 barcode_fp = os.path.join(barcode_dir, "ds0_Barcodes.dat")
 
-
-
 # POST-PROCESSED DATASETS
 # Post-processed Control Data with 3 columns for duration time, linear velocity and angular velocity
 control_data = pd.read_table(control_fp, sep=r'\s+', skiprows=3).to_numpy()
@@ -50,8 +47,10 @@ measurement_data = pd.read_table(measurement_fp, sep=r'\s+', skiprows=3).to_nump
 barcode_data = pd.read_table(barcode_fp, sep=r'\s+', skiprows=3).to_numpy()
 
 
+# List of Landmark Locations
 lm_locations = [np.array([lm[1],lm[2]]) for lm in landmark_data]
 
+# Barcode Dictionary
 bardcodes = pd.DataFrame(barcode_data, columns=["index","id"])
 barcode_to_index = (bardcodes.groupby("id")["index"].apply(list).to_dict())
 
@@ -65,7 +64,6 @@ id_vectors = (
       .apply(lambda g: list(map(tuple, g.values)))   
       .to_dict()
 )
-
 
 # Initializing arrays for reformatting the two velocities and timestep values
 dt_arr = []
@@ -109,40 +107,43 @@ for i in range(len(groundtruth_data)-1):
 def x_t(X_t_p, u_t, dt):
 
     """
-    :param x: Starting x-coordinate
-    :param y: Starting y-coordinate
-    :param theta: Starting heading position of robot
-    :param v: Translational Speed (Constant)
-    :param w: Rotational Speed (Constant)
-    :param t: Duration time of the commands (Constant)
-    
+    :param X_t_p: Current robot state [x, y, theta]
+    :param u_t: Control input [v, w] 
+    :param dt: Time step
     """
-
+    # Add motion noise to translational and rotational velocities
     v_hat = u_t[0] + sample(a1 * abs(u_t[0]) + a2 * abs(u_t[1]))
     w_hat = u_t[1] + sample(a3 * abs(u_t[0]) + a4 * abs(u_t[1]))
     gamma = sample(a5 * abs(u_t[0]) + a6 * abs(u_t[1]))
 
+    # Straight-line motion when rotational speed is zero
     if w_hat == 0:
         x_dt = np.array([v_hat * cos(X_t_p[2]) * dt, v_hat * sin(X_t_p[2]) * dt, 0])
 
+    # Circular motion: compute Instantaneous Center of Rotation (ICR)
     else:
         # Instantaneous Center of Rotation (ICR)
         xc = X_t_p[0] - (v_hat/w_hat)*sin(X_t_p[2])
         yc = X_t_p[1] + (v_hat/w_hat)*cos(X_t_p[2])
 
+        # Rotation matrix for turning around ICR
         R = np.array([[cos(w_hat*dt), -sin(w_hat*dt), 0],
                       [sin(w_hat*dt),  cos(w_hat*dt), 0],
                       [0        ,          0, 1]])
 
+        # Apply rotation and translation relative to ICR
         x_dt = np.matmul(R,np.array([X_t_p[0] - xc, 
                                      X_t_p[1] - yc,
                                      w_hat * dt + gamma * dt]))
 
+        # Shift reference to ICR
         X_t_p = np.array([xc,yc,X_t_p[2]])
 
 
+    # Compute new state by adding displacement
     x_t = X_t_p + x_dt
     
+    # Wrap Angles
     x_t[2] = (x_t[2] + np.pi) % (2 * np.pi) - np.pi     
 
     return x_t
@@ -158,7 +159,10 @@ def z_t(X_t, lm_x, lm_y, lm_nums = []):
 
     """
     :param X_t: Current robot state
-    :param X_i: Current landmark position
+    :param lm_x: Landmark x-coordinate
+    :param lm_y: Landmark y-coordinate
+    :param lm_nums: List of Landmark Numbers
+    
     
     """
     x_t, y_t, theta_t = X_t
@@ -172,6 +176,7 @@ def z_t(X_t, lm_x, lm_y, lm_nums = []):
 
         zt[1] = (zt[1] + np.pi) % (2 * np.pi) - np.pi
 
+        # Range and Bearing for Output
         range_out = zt[0]
         bearing_out = zt[1]
 
@@ -188,8 +193,8 @@ def z_t(X_t, lm_x, lm_y, lm_nums = []):
             zt = [np.sqrt((x_t - x_i)**2 + (y_t - y_i)**2), 
                             np.atan2((y_i - y_t),(x_i - x_t)) - theta_t]
 
+            # Wrap angles
             zt[1] = (zt[1] + np.pi) % (2 * np.pi) - np.pi
-
             range_out = zt[0]
             bearing_out = zt[1]
             
@@ -214,15 +219,17 @@ def gaussian_distribution(x, mean, stdev):
 # Algorithm Referenced from Probabilistic Robotics Table 4.3 (Particle_filter)
 def particle_filter(X_t_p, W_p, u_t, dt, count):
     
+    # Initialize arrays for new particles and weights
     Xt = np.zeros((PARTICLE_SIZE,3))
     w = np.ones(PARTICLE_SIZE)
-
     norm_factor = 0
 
+    # Check if landmarks are observed at this timestep
     if count in id_arr:
 
         landmark_list = []
 
+        # Build list of observed landmarks and their measurements
         for id in id_arr[count]:
             
             indx = barcode_to_index[id[0]]
@@ -235,6 +242,7 @@ def particle_filter(X_t_p, W_p, u_t, dt, count):
 
             landmark_list.append([lm_x, lm_y, actual_range, actual_bearing])
 
+        # Update each particle based on motion and measurement
         for m in range(PARTICLE_SIZE):
 
             xt = x_t(X_t_p[m], u_t, dt)
@@ -242,11 +250,12 @@ def particle_filter(X_t_p, W_p, u_t, dt, count):
 
             wt = 1.0
 
+            # Update particle weight based on landmark measurements
             for l in range(len(landmark_list)):
                 zt = z_t(xt, landmark_list[l][0], landmark_list[l][1])
 
-                range_prob = gaussian_distribution(zt[0], actual_range, 0.4)
-                bearing_prob = gaussian_distribution(zt[1], actual_bearing, 0.25)
+                range_prob = gaussian_distribution(zt[0], actual_range, 0.1)
+                bearing_prob = gaussian_distribution(zt[1], actual_bearing, 0.02)
 
                 wt *= range_prob * bearing_prob
 
@@ -255,6 +264,7 @@ def particle_filter(X_t_p, W_p, u_t, dt, count):
 
     else:
 
+        # No landmarks observed: only apply motion model, keep previous weight
         for m in range(PARTICLE_SIZE):
 
             xt = x_t(X_t_p[m], u_t, dt)
@@ -263,11 +273,13 @@ def particle_filter(X_t_p, W_p, u_t, dt, count):
 
             norm_factor += w[m]
 
+    # Normalize weights
     if norm_factor <= 0:
         w = w / len(w)
     else:
         w = w / norm_factor     
 
+    # Resample particles using low-variance sampler
     Xt, w = low_variance_sampler(Xt, w)
 
     return Xt, w
@@ -276,78 +288,109 @@ def particle_filter(X_t_p, W_p, u_t, dt, count):
 # Algorithm Referenced from Probabilistic Robotics Table 4.4 (Low_variance_sampler)
 def low_variance_sampler(Xt, w):
 
+    # Initialize a random offset r in the range [0, 1/N)
     r = np.random.uniform(0, 1 / PARTICLE_SIZE)
+
+    # Initialize cumulative weight
     c = w[0]
+
+    # Initialize particle index
     i = 0 
 
+    # Prepare arrays for resampled particles and weights
     Xt_sampled = np.zeros((PARTICLE_SIZE,3))
     W_sampled = np.zeros(PARTICLE_SIZE) / PARTICLE_SIZE
 
+    # Iterate through each resampled particle
     for m in range(PARTICLE_SIZE):
 
+        # Compute the threshold u for selecting a particle
         u = r + m * (1/PARTICLE_SIZE)
 
+        # Move along the cumulative weight until u <= c
         while u > c:
             i += 1
 
+            # Prevent index from exceeding PARTICLE_SIZE
+            if i >= PARTICLE_SIZE:
+                i = PARTICLE_SIZE - 1
+                break
+            
+            # Update cumulative weight
             c = c + w[i]
 
+        # Assign the selected particle and its weight
         Xt_sampled[m] = Xt[i] 
         W_sampled[m] = w[i]  
 
     return Xt_sampled, W_sampled
 
 
-
 # QUESTION 2 CODE:
 
-a1 = 0
-a2 = 0
-a3 = 0
-a4 = 0
-a5 = 0
-a6 = 0
+# Noise Parameters
+a1 = a2 = 0
+a3 = a4 = 0
+a5 = a6 = 0
+
+# a1 = a2 = 0.3
+# a3 = a4 = 0.6
+# a5 = a6 = 1
 
 
 # Initialize X and Y arrays for plotting
 X_arr = [0]
 Y_arr = [0]
+theta_arr = [0]
 
 # Calculate next robot state for v = 0.5 m/s, w = 0 rad/s, and t = 1s
 x_o, y_o, theta_o = x_t(np.array([0,0,0]), np.array([0.5,0]), 1)
 # Update X and Y arrays
 X_arr.append(x_o)
 Y_arr.append(y_o)
+theta_arr.append(theta_o)
 
 # Calculate next robot state for v = 0 m/s, w = -1/2pi rad/s, and t = 1s
 x_o, y_o, theta_o = x_t(np.array([x_o, y_o, theta_o]), np.array([0,-1/(2*np.pi)]), 1)
 # Update X and Y arrays
 X_arr.append(x_o)
 Y_arr.append(y_o)
+theta_arr.append(theta_o)
 
 # Calculate next robot state for v = 0.5 m/s, w = 0 rad/s, and t = 1s
 x_o, y_o, theta_o = x_t(np.array([x_o, y_o, theta_o]), np.array([0.5,0]), 1)
 # Update X and Y arrays
 X_arr.append(x_o)
 Y_arr.append(y_o)
+theta_arr.append(theta_o)
 
 # Calculate next robot state for v = 0 m/s, w = -1/2pi rad/s, and t = 1s
 x_o, y_o, theta_o = x_t(np.array([x_o, y_o, theta_o]), np.array([0,1/(2*np.pi)]), 1)
 # Update X and Y arrays
 X_arr.append(x_o)
 Y_arr.append(y_o)
+theta_arr.append(theta_o)
 
 # Calculate next robot state for v = 0.5 m/s, w = 0 rad/s, and t = 1s
 x_o, y_o, theta_o = x_t(np.array([x_o, y_o, theta_o]), np.array([0.5,0]), 1)
 # Update X and Y arrays
 X_arr.append(x_o)
 Y_arr.append(y_o)
+theta_arr.append(theta_o)
 
 # Plot output for Question 2
-plt.figure(figsize=(12,8))
+plt.figure(figsize=(10,6))
 plt.plot(X_arr,Y_arr)
-plt.xlabel("x-position")
-plt.ylabel("y-position")
+
+# Updating orientation of robot chassis marker for plotting
+arrow_theta = np.array(theta_arr)
+x_arrow = np.cos(arrow_theta)
+y_arrow = np.sin(arrow_theta)
+
+# Plotting orientated robot chassis
+plt.quiver(X_arr[::1],Y_arr[::1],x_arrow[::1],y_arrow[::1],scale=90,color='blue', width=0.005)
+plt.xlabel("x-position [m]")
+plt.ylabel("y-position [m]")
 plt.title("Question 2: Motion Model Test Trajectory")
 plt.savefig("Question_2_Plot.png")
 plt.show()
@@ -383,11 +426,6 @@ for i in range(len(groundtruth_data)-1):
 # Control array of control velocities for all timesteps
 u_t0 = [v_arr, w_arr]
 
-# Starting position and orientation of robot
-x_start = 1.29812900 
-y_start = 1.88315210
-theta_start = 2.82870000 
-
 # Initial robot state to be treated as prior state input into motion model
 x_t_c = np.array([x_start, y_start, theta_start])
 
@@ -408,13 +446,17 @@ for j in range(len(time_arr)):
 
 
 # CODE FOR PLOTTING QUESTION 3:
-
 # Number of points to skip before next robot marker is to be plotted
 num_arrow = 150
+plt.figure(figsize=(10,6))
 
-plt.figure(figsize=(12,8))
+# Endpoints of Trajectories
+plt.scatter(x_start,y_start,label="START", color = "red", s=100, zorder=2)
+plt.scatter(X_arr[-1],Y_arr[-1],label="Dead-Reckoned End",color = "orange", s=100, zorder=2)
+plt.scatter(X_arr_true[-1],Y_arr_true[-1],label="Groundtruth END",color = "green", s=100, zorder=2)
+
 # Dead reckoned trajectory
-plt.plot(X_arr,Y_arr, 'c--', linewidth=1,  label= "Dead Reckoned")
+plt.plot(X_arr,Y_arr, 'c--', linewidth=1,  label= "Dead Reckoned", zorder=1)
 
 # Updating orientation of robot chassis marker for plotting
 arrow_theta = np.array(theta_arr)
@@ -422,17 +464,17 @@ x_arrow = np.cos(arrow_theta)
 y_arrow = np.sin(arrow_theta)
 
 # Plotting orientated robot chassis
-plt.quiver(X_arr[::num_arrow],Y_arr[::num_arrow],x_arrow[::num_arrow],y_arrow[::num_arrow],scale=90,color='blue', width=0.005)
+plt.quiver(X_arr[::num_arrow],Y_arr[::num_arrow],x_arrow[::num_arrow],y_arrow[::num_arrow],scale=90,color='blue', width=0.005, zorder=1)
 
 # Groundtruh trajectory
-plt.plot(X_arr_true,Y_arr_true, color='yellow', linestyle = 'dashed', linewidth=1, label = "Ground Truth")
+plt.plot(X_arr_true,Y_arr_true, color='yellow', linestyle = 'dashed', linewidth=1, label = "Ground Truth", zorder=1)
 arrow_theta2 = np.array(theta_arr_true)
 x_arrow2 = np.cos(arrow_theta2)
 y_arrow2 = np.sin(arrow_theta2)
-plt.quiver(X_arr_true[::num_arrow],Y_arr_true[::num_arrow],x_arrow2[::num_arrow],y_arrow2[::num_arrow],scale=90,color='orange', width=0.005)
+plt.quiver(X_arr_true[::num_arrow],Y_arr_true[::num_arrow],x_arrow2[::num_arrow],y_arrow2[::num_arrow],scale=90,color='orange', width=0.005, zorder=1)
 
-plt.xlabel("x-position")
-plt.ylabel("y-position")
+plt.xlabel("x-position [m]")
+plt.ylabel("y-position [m]")
 plt.title("Question 3: Ground Truth vs. Dead Reckoned Trajectories")
 plt.legend()
 plt.savefig("Question_3_Plot.png")
@@ -468,8 +510,7 @@ print(f'Actual Position of Landmark 13: {(round(l17_pos[0],4).item(), round(l17_
 print(f'Percent Error between Actual and Predicted Landmark 17 Position: {(round(error3[0],4).item(),round(error3[1],4).item())}')
 
 # CODE FOR PLOTTING QUESTION 6:
-
-plt.figure(figsize=(12,8))
+plt.figure(figsize=(10,6))
 # Plotting robot chassis in space for landmark 6 prediction
 plt.plot(r_pos_1[0],r_pos_1[1], 'D:r', ms = 15, label = "Robot Position for Landmark 6")
 
@@ -497,8 +538,8 @@ x_arw3 = np.cos(r_pos_3[2])
 y_arw3 = np.sin(r_pos_3[2])
 plt.quiver(r_pos_3[0],r_pos_3[1],x_arw3,y_arw3,scale=20,color='green', width=0.005)
 
-plt.xlabel("x-position")
-plt.ylabel("y-position")
+plt.xlabel("x-position [m]")
+plt.ylabel("y-position [m]")
 plt.title("Question 6: Ground Truth Landmarks Locations vs. Predicted Landmark Locations")
 plt.legend()
 plt.savefig("Question_6_Plot.png")
@@ -508,14 +549,16 @@ plt.show()
 # QUESTION 8 CODE:
 
 # QUESTION 8-1 
-PARTICLE_SIZE = 300
+PARTICLE_SIZE = 100
 
-a1 = 0.4
-a2 = 0.4
-a3 = 1.25
-a4 = 1.25
-a5 = 0.6
-a6 = 0.6
+# Noise Parameters
+a1 = a2 = 0.3
+a3 = a4 = 0.6
+a5 = a6 = 1
+
+# a1 = a2 = 0
+# a3 = a4 = 0
+# a5 = a6 = 0
 
 X_arr = [0]
 Y_arr = [0]
@@ -554,19 +597,15 @@ X_arr.append(np.mean(Xtp_S2, axis=0)[0])
 Y_arr.append(np.mean(Xtp_S2, axis=0)[1])
 
 # Plot output for Question 8-1
-plt.figure(figsize=(12,8))
+plt.figure(figsize=(10,6))
 plt.plot(X_arr,Y_arr)
-plt.xlabel("x-position")
-plt.ylabel("y-position")
+plt.xlabel("x-position [m]")
+plt.ylabel("y-position [m]")
 plt.title("Question 8: Particle Filter Test Trajectory")
 plt.savefig("Question_8-1_Plot.png")
 plt.show()
 
-
-
-
 # QUESTION 8-2 
-
 # Point Mass Representation of Starting Point
 Xtp = np.full((PARTICLE_SIZE,3), np.array([x_start, y_start, theta_start])) 
 
@@ -582,6 +621,7 @@ for i in range(len(dt_arr)):
     # Calculate current robot state from prior robot state, control velocities and timesteps
     Xtp, W_list = particle_filter(Xtp, W_list,[v_arr[i], w_arr[i]], dt_arr[i], i)
 
+    # Calculate the Mean of the Distribution for Plotting
     Xt_best = np.mean(Xtp, axis=0)
 
     # Update arrays with current robot state
@@ -589,36 +629,49 @@ for i in range(len(dt_arr)):
     Y_arr.append(Xt_best[1])
     theta_arr.append(Xt_best[2])
 
+    # Particle Cloud Code
+    # if i % 100 == 0:
+    #     plt.figure(figsize=(10,6))
+    #     plt.scatter(Xtp[:,0],Xtp[:,1], color = "blue", label = "Particles", zorder=3)
+    #     plt.plot(X_arr,Y_arr, 'c--', linewidth=1,  label= "Dead Reckoned", zorder=2)
+    #     plt.plot(X_arr_true[0:10000],Y_arr_true[0:10000], color='yellow', linestyle = 'dashed', linewidth=1, label = "Ground Truth", zorder=1)
+    #     plt.title(f"Particle Cloud at Time Step: {i}")
+    #     plt.xlabel("x-position")
+    #     plt.ylabel("y-position")
+    #     plt.legend()
+    #     plt.show()
+
+print(f"Distance Between Ends: {np.sqrt((Y_arr[-1] - Y_arr_true[-1])**2 + (X_arr[-1] - X_arr_true[-1])**2)}")
 
 # CODE FOR PLOTTING QUESTION 8-2:
-
 # Number of points to skip before next robot marker is to be plotted
 num_arrow = 150
 
-plt.figure(figsize=(12,8))
+# Endpoints of Trajectories
+plt.figure(figsize=(10,6))
+plt.scatter(x_start,y_start,label="START", color = "red", s=100, zorder=2)
+plt.scatter(X_arr[-1],Y_arr[-1],label="Dead-Reckoned End",color = "orange", s=100, zorder=2)
+plt.scatter(X_arr_true[-1],Y_arr_true[-1],label="Groundtruth END",color = "green", s=100, zorder=2)
+
 # Dead reckoned trajectory
-plt.plot(X_arr,Y_arr, 'c--', linewidth=1,  label= "Dead Reckoned")
+plt.plot(X_arr,Y_arr, 'c--', linewidth=1,  label= "Dead Reckoned", zorder=1)
 # Updating orientation of robot chassis marker for plotting
 arrow_theta = np.array(theta_arr)
 x_arrow = np.cos(arrow_theta)
 y_arrow = np.sin(arrow_theta)
 
 # Plotting orientated robot chassis
-plt.quiver(X_arr[::num_arrow],Y_arr[::num_arrow],x_arrow[::num_arrow],y_arrow[::num_arrow],scale=90,color='blue', width=0.005)
+plt.quiver(X_arr[::num_arrow],Y_arr[::num_arrow],x_arrow[::num_arrow],y_arrow[::num_arrow],scale=90,color='blue', width=0.005, zorder=1)
 
 # Groundtruh trajectory
-plt.plot(X_arr_true,Y_arr_true, color='yellow', linestyle = 'dashed', linewidth=1, label = "Ground Truth")
+plt.plot(X_arr_true,Y_arr_true, color='yellow', linestyle = 'dashed', linewidth=1, label = "Ground Truth", zorder=1)
 arrow_theta2 = np.array(theta_arr_true)
 x_arrow2 = np.cos(arrow_theta2)
 y_arrow2 = np.sin(arrow_theta2)
-plt.quiver(X_arr_true[::num_arrow],Y_arr_true[::num_arrow],x_arrow2[::num_arrow],y_arrow2[::num_arrow],scale=90,color='orange', width=0.005)
+plt.quiver(X_arr_true[::num_arrow],Y_arr_true[::num_arrow],x_arrow2[::num_arrow],y_arrow2[::num_arrow],scale=90,color='orange', width=0.005, zorder=1)
 
-plt.scatter(x_start,y_start,label="START")
-plt.scatter(X_arr[-1],Y_arr[-1],label="Dead-Reckoned End")
-plt.scatter(X_arr_true[-1],Y_arr_true[-1],label="Groundtruth END")
-
-plt.xlabel("x-position")
-plt.ylabel("y-position")
+plt.xlabel("x-position [m]")
+plt.ylabel("y-position [m]")
 plt.title("Question 8: Ground Truth vs. Dead Reckoned Trajectories for Particle Filter")
 plt.legend()
 plt.savefig("Question_8-2_Plot.png")
