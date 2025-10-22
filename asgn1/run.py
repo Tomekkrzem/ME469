@@ -370,6 +370,8 @@ def Online_A_Star(map_vals, res, start, goal):
         path.append(s_prime)
 
 
+
+
 # # Grid Resolutions
 # Res = 1
 # Res2 = 0.1
@@ -494,14 +496,27 @@ def Online_A_Star(map_vals, res, start, goal):
 #--------------------------------------------------------------------------------------------------------------------------#
 class Controller:
 
-    def __init__(self, start):
+    def __init__(self, Grid, res, start, goal, sqr_size, o_locs, noise, dt, offset=0.3):
+        
+        self.width, self.height, self.grid = Grid([-2.0,5.0], [-6.0,6.0], res, o_locs)
+
+        self.res = res
+
+        # Trajectory
+        self.Traj = Online_A_Star([self.width,self.height,self.grid], res, (start[0],start[1]),(goal[0],goal[1]))
+        
+        # Simulation Time Step
+        self.dt = dt
         
         # Starting State
         self.xt = start
 
+        # Goal State
+        self.xg = goal
+
         # Initilialize Errors
-        self.e_v = None         # Linear Error
-        self.e_w = None         # Angular Error
+        self.e_v = None        
+        self.e_w = None        
 
         # Initialize Previous State Errors
         self.prev_e_v = None
@@ -518,248 +533,374 @@ class Controller:
         # Add Initial State to Path
         self.robot_path = [[self.xt[0], self.xt[1]]]
 
-def bezier_curve(c_points, num_points, check_collisions):
+        # Obstacle Clearance Offset for Trajectory Smoothing
+        self.obst_off = offset
 
-    n = len(c_points) - 1
+        # Obstacle Representation for Collision Checking of Smoothed Trajectory
+        self.obstacles = [(o[0], o[1], sqr_size, sqr_size) for o in o_locs]
 
-    t = np.linspace(0, 1, num_points)
+        # Movement Noise
+        self.noise = noise
 
-    output_curve = np.zeros((num_points, 2))
-    offset = 0.3
 
-    obstacles = [(o[0], o[1], 0.8, 0.8) for o in obstacle_locations]
+    def bezier_curve(self, c_points, num_points, check_collisions):
 
-    for i in range(num_points):
-        for j in range(n + 1):
-            
-            # Bezier Curve Equation Referenecd From "Path Planning based on Bezier Curve for Autonomous Ground Vehicles"
-            output_curve[i] += c_points[j] * math.comb(n, j) * (t[i] ** j) * ((1 - t[i]) ** (n - j)) 
+        n = len(c_points) - 1
 
-        if check_collisions:
-            # Collision Checking
-            for o in obstacles:
+        t = np.linspace(0, 1, num_points)
+
+        output_curve = np.zeros((num_points, 2))
+
+        for i in range(num_points):
+            for j in range(n + 1):
                 
-                p = output_curve[i]
-                ox, oy, w, h = o
+                # Bezier Curve Equation Referenecd From "Path Planning based on Bezier Curve for Autonomous Ground Vehicles"
+                output_curve[i] += c_points[j] * math.comb(n, j) * (t[i] ** j) * ((1 - t[i]) ** (n - j)) 
 
-                # X-Distance Between Point and Obstacle Center
-                x_to_cx_dist = p[0] - ox
-                # Y-Distance Between Point and Obstacle Center
-                y_to_cy_dist = p[1] - oy
+            if check_collisions:
 
-                if abs(x_to_cx_dist) <= w/2 and abs(y_to_cy_dist) <= h/2:
-                    if w/2 - abs(x_to_cx_dist) < h/2 - abs(y_to_cy_dist):
-                        output_curve[i][0] = ox + np.sign(x_to_cx_dist) * (w/2 + offset)
-                    else:
-                        output_curve[i][1] = oy + np.sign(y_to_cy_dist) * (h/2 + offset)
+                # Collision Checking
+                for o in self.obstacles:
+                    
+                    p = output_curve[i]
+                    ox, oy, w, h = o
 
-    return output_curve
+                    # X-Distance Between Point and Obstacle Center
+                    x_to_cx_dist = p[0] - ox
+                    # Y-Distance Between Point and Obstacle Center
+                    y_to_cy_dist = p[1] - oy
+
+                    if abs(x_to_cx_dist) <= w/2 and abs(y_to_cy_dist) <= h/2:
+
+                        if w/2 - abs(x_to_cx_dist) < h/2 - abs(y_to_cy_dist):
+
+                            output_curve[i][0] = ox + np.sign(x_to_cx_dist) * (w/2 + self.obst_off)
+
+                        else:
+
+                            output_curve[i][1] = oy + np.sign(y_to_cy_dist) * (h/2 + self.obst_off)
+
+        return output_curve
 
 
-def feed_forward_control(start, goal, T, dt):
+    def Offline_PID_Controller(self):
 
-    # Preprocess Trajectory Using Bezier Curve
-    smooth_T = bezier_curve(T, int(len(T)/(dt*10)),1)
-    smooth_T = bezier_curve(smooth_T, int(len(smooth_T)/(dt)), 0)
+        # Preprocess Trajectory Using Bezier Curve
+        smooth_T = self.bezier_curve(np.array(self.Traj), int(len(self.Traj)/(self.dt*10)), 1)
+        smooth_T = self.bezier_curve(smooth_T, int(len(smooth_T)/(self.dt)), 0)
 
-    # Compose Feedforward States for Robot
-    ffwd_points = np.zeros((len(smooth_T), 3))
-    ffwd_points[0] = (start[0], start[1], start[2])
+        # Compose Feedforward States for Robot
+        ffwd_points = np.zeros((len(smooth_T), 3))
+        ffwd_points[0] = self.xt
 
-    for i in range(len(smooth_T) - 1):
+        for i in range(len(smooth_T) - 1):
 
-        x,y = smooth_T[i+1]
-        x_p, y_p = smooth_T[i]
-        theta = np.atan2((y - y_p),(x - x_p))
-        theta = (theta + np.pi) % (2 * np.pi) - np.pi
+            x,y = smooth_T[i+1]
+            x_p, y_p = smooth_T[i]
+            theta = np.atan2((y - y_p),(x - x_p))
+            theta = (theta + np.pi) % (2 * np.pi) - np.pi
 
-        ffwd_points[i+1] = (x,y, theta)
+            ffwd_points[i+1] = (x,y, theta)
 
-    Kp_v = 0.5
-    Kp_w = 1
-    Ki_v = 0.0001
-    Ki_w = 0.0005
-    Kd_v = 0.5
-    Kd_w = 1
+        Kp_v = 0.5
+        Kp_w = 1
+        Ki_v = 0.0001
+        Ki_w = 0.0005
+        Kd_v = 0.5
+        Kd_w = 1
 
-    # Current State
-    xt = start
+        # Loop Until Robot Reaches Completes Trajectory
+        for i,p in enumerate(ffwd_points):
 
-    # Initilialize Errors
-    e_v = None
-    e_w = None
+            # Compute Linear Error as Distance Between Trajectory Point and Robot Position
+            x_e = p[0] - self.xt[0]
+            y_e = p[1] - self.xt[1]
+            self.e_v = np.sqrt(x_e**2 + y_e**2)
 
-    v_prev = 0
-    w_prev = 0
+            # Compute Angular Error as the Difference between Desired Heading to Converge to Trajectory and Robot Heading
+            theta = self.xt[2]
+            theta_desired = np.atan2(y_e, x_e)
+            self.e_w = theta_desired - theta
+
+            # Wrap Angles
+            self.e_w = (self.e_w + np.pi) % (2 * np.pi) - np.pi 
+
+            # Compute Error Derivative
+            if self.prev_e_v is not None and self.prev_e_w is not None: 
+                d_ev = self.e_v - self.prev_e_v 
+                d_ew = self.e_w - self.prev_e_w
+            else: 
+                d_ev = 0 
+                d_ew = 0
+
+            # Compute Velocity
+            v = Kp_v * self.e_v + Ki_v * self.e_v_intg + Kd_v * d_ev 
+            w = Kp_w * self.e_w + Ki_w * self.e_w_intg + Kd_w * d_ew 
+            w = (w + np.pi) % (2 * np.pi) - np.pi
+
+            # Limit the Accelerations
+            dv = np.clip(v - self.v_prev, -0.288 * self.dt, 0.288 * self.dt)
+            dw = np.clip(w - self.w_prev, -5.579 * self.dt, 5.579 * self.dt)
+
+            # Update Velocites with Limited Accelerations
+            v = self.v_prev + dv
+            w = self.w_prev + dw
+
+            # Update Previous Errors
+            self.prev_e_v = self.e_v
+            self.prev_e_w = self.e_w
+
+            # Update Previous Velocity
+            self.v_prev = v
+            self.w_prev = w
+
+            # Compute Next State Position
+            self.xt = self.x_t(self.xt,[v,w],self.dt)
+
+            # Update Error Integral
+            self.e_v_intg += self.e_v
+            self.e_w_intg += self.e_w
+
+            self.robot_path.append([self.xt[0],self.xt[1]])
+
+        return self.robot_path, ffwd_points
     
-    prev_e_v = None
-    prev_e_w = None
+    def Online_PID_Controller(self):
 
-    e_v_intg = 0
-    e_w_intg = 0
+        Kp_v = 0.01
+        Kp_w = 0.9
+        Ki_v = 0.0001
+        Ki_w = 0
+        Kd_v = 0
+        Kd_w = 0
 
-    robot_path = [[xt[0],xt[1]]]
+        thresh = 0.05
 
-    # Loop Until Robot Reaches Completes Trajectory
-    for i,p in enumerate(ffwd_points):
+        res = self.res
 
-        # Compute Error Between Desired State and Actual State
-        x_e = p[0] - xt[0]
-        y_e = p[1] - xt[1]
-        theta = xt[2]
-
-        e_v = np.sqrt(x_e**2 + y_e**2)
- 
-        theta_desired = np.atan2(p[1] - xt[1], p[0] - xt[0])
-        e_w = theta_desired - theta
-        e_w = (e_w + np.pi) % (2 * np.pi) - np.pi
-
-        # Compute Derivative (i.e. Change between Current and Previous State)
-        if prev_e_v is not None and prev_e_w is not None: 
-            d_ev = e_v - prev_e_v 
-            d_ew = e_w - prev_e_w
+        # If the Resolution is Fine Floor the Start and Goal Position Values to One Decimal
+        if res < 1: 
+            goal = (np.floor(self.xg[0] * 10) / 10, np.floor(self.xg[1] * 10) / 10)
+            start = (np.floor(self.xt[0] * 10) / 10, np.floor(self.xt[1] * 10) / 10)
+        # If the Resolution is Coarses Floor the Start and Goal Position to Zero Decimals
         else: 
-            d_ev = 0 
-            d_ew = 0
+            goal = (np.floor(self.xg[0]), np.floor(self.xg[1]))
+            start = (np.floor(self.xt[0]), np.floor(self.xt[1]))
 
-        # Compute Velocity
-        v = Kp_v * e_v + Ki_v * e_v_intg + Kd_v * d_ev 
-        w = Kp_w * e_w + Ki_w * e_w_intg + Kd_w * d_ew 
-        w = (w + np.pi) % (2 * np.pi) - np.pi
+        # Initialize Current State
+        s_prime = (self.xt[0], self.xt[1])
 
-        # Limit the Accelerations
-        dv = np.clip(v - v_prev, -0.288 * dt, 0.288 * dt)
-        dw = np.clip(w - w_prev, -5.579 * dt, 5.579 * dt)
+        # Initialize Previous State to None
+        s = None
+        # Initialize Previous Action to None
+        a = None
 
-        # update velocities respecting limits
-        v = v_prev + dv
-        w = w_prev + dw
+        # Initialize Resulting States Dictionary (s, a) <- s'
+        resulting_states = dict()
+        
+        # Initialize Heuristic Table H[s] = h(s)
+        H = dict()
 
-        # Update Previous Errors
-        prev_e_v = e_v
-        prev_e_w = e_w
+        # 8 Neighbor Directions to Check
+        neighbor_dirs = [(-res,-res),(-res,0),(-res,res),(0,res),(res,res),(res,0),(res,-res),(0,-res)]
 
-        # Update Previous Velocity
-        v_prev = v
-        w_prev = w
+        # Loop Until Robot is Within A Threshold Position Around Goal
+        while np.sqrt((self.xg[0] - self.xt[0])**2 + (self.xg[1] - self.xt[1])**2) > thresh:
 
-        # Compute Next State Position
-        xt = x_t(xt,[v,w],dt)
+            # If Current Path is Not in Heuristic Table Add it 
+            if s_prime not in H:
+                H[s_prime] = Heuristic(s_prime, goal)
 
-        # Update Error Integral
-        e_v_intg += e_v
-        e_w_intg += e_w
+            # If Previous State Exists
+            if s is not None:
+                
+                # Update Resulting States
+                resulting_states[(s, a)] = s_prime
 
-        robot_path.append([xt[0],xt[1]])
+                # Update Heuristic Table with the Smallest Cost of the Previous State
+                H[s] = min(Online_A_Star_Cost([self.width,self.height,self.grid], goal, res, s, n, resulting_states.get((s, n)), H) for n in neighbor_dirs)
+            
+            # Action Cost List
+            a_list = []
 
-    return robot_path, ffwd_points
+            # For Each Neighbor Direction
+            for n in neighbor_dirs: 
+                
+                # Next State is the State of Current State + Action if it Exists in Resulting States. Otherwise it is None
+                next_s = resulting_states.get((s_prime, n))
 
+                # Compute Cost of Next State
+                cost = Online_A_Star_Cost([self.width,self.height,self.grid], goal, res, s_prime, n, next_s, H)
 
-# Sampling Function Referenced from Probabilistic Robotics Table 5.4 (sample_normal_distribution)
-def sample(b):
+                # Add it to Action Cost List
+                a_list.append((cost,n))
 
-    return b/6 * np.random.uniform(-1,1,12).sum()
+            # Action Taken is the One with Least Cost
+            a = min(a_list)[1]
+            
+            # Previous State is now the Current State
+            s = s_prime
 
-def x_t(X_t_p, u_t, dt):
+            # Compute Next State By Performing Action
+            s_prime = (round((np.floor(s_prime[0] * 10) / 10) + a[0],1),
+                    round((np.floor(s_prime[1] * 10) / 10) + a[1],1))
 
-    a1 = a2 = a3 = a4 = a5 = a6 = 0
+            # Compute Linear Error as Distance Between Trajectory Point and Robot Position
+            x_e = s_prime[0] - self.xt[0]
+            y_e = s_prime[1] - self.xt[1]
+            self.e_v = np.sqrt(x_e**2 + y_e**2)
 
-    """
-    :param X_t_p: Current robot state [x, y, theta]
-    :param u_t: Control input [v, w] 
-    :param dt: Time step
-    """
-    # Add motion noise to translational and rotational velocities
-    v_hat = u_t[0] + sample(a1 * abs(u_t[0]) + a2 * abs(u_t[1]))
-    w_hat = u_t[1] + sample(a3 * abs(u_t[0]) + a4 * abs(u_t[1]))
-    gamma = sample(a5 * abs(u_t[0]) + a6 * abs(u_t[1]))
+            # Compute Angular Error as the Difference between Desired Heading to Converge to Trajectory and Robot Heading
+            theta = self.xt[2]
+            theta_desired = np.atan2(y_e, x_e)
+            self.e_w = theta_desired - theta
 
-    # Straight-line motion when rotational speed is zero
-    if w_hat == 0:
-        x_dt = np.array([v_hat * cos(X_t_p[2]) * dt, v_hat * sin(X_t_p[2]) * dt, 0])
+            # Wrap Angles
+            self.e_w = (self.e_w + np.pi) % (2 * np.pi) - np.pi 
 
-    # Circular motion: compute Instantaneous Center of Rotation (ICR)
-    else:
-        # Instantaneous Center of Rotation (ICR)
-        xc = X_t_p[0] - (v_hat/w_hat)*sin(X_t_p[2])
-        yc = X_t_p[1] + (v_hat/w_hat)*cos(X_t_p[2])
+            # Compute Error Derivative
+            if self.prev_e_v is not None and self.prev_e_w is not None: 
+                d_ev = self.e_v - self.prev_e_v 
+                d_ew = self.e_w - self.prev_e_w
+            else: 
+                d_ev = 0 
+                d_ew = 0
 
-        # Rotation matrix for turning around ICR
-        R = np.array([[cos(w_hat*dt), -sin(w_hat*dt), 0],
-                      [sin(w_hat*dt),  cos(w_hat*dt), 0],
-                      [0        ,          0, 1]])
+            # Compute Velocity
+            v = Kp_v * self.e_v + Ki_v * self.e_v_intg + Kd_v * d_ev 
+            w = Kp_w * self.e_w + Ki_w * self.e_w_intg + Kd_w * d_ew 
+            w = (w + np.pi) % (2 * np.pi) - np.pi
 
-        # Apply rotation and translation relative to ICR
-        x_dt = np.matmul(R,np.array([X_t_p[0] - xc, 
-                                     X_t_p[1] - yc,
-                                     w_hat * dt + gamma * dt]))
+            # Limit the Accelerations
+            dv = np.clip(v - self.v_prev, -0.288 * self.dt, 0.288 * self.dt)
+            dw = np.clip(w - self.w_prev, -5.579 * self.dt, 5.579 * self.dt)
 
-        # Shift reference to ICR
-        X_t_p = np.array([xc,yc,X_t_p[2]])
+            # Update Velocites with Limited Accelerations
+            v = self.v_prev + dv
+            w = self.w_prev + dw
 
-    # Compute new state by adding displacement
-    x_t = X_t_p + x_dt
-    
-    # Wrap Angles
-    x_t[2] = (x_t[2] + np.pi) % (2 * np.pi) - np.pi     
+            # Update Previous Errors
+            self.prev_e_v = self.e_v
+            self.prev_e_w = self.e_w
 
-    return x_t
+            # Update Previous Velocity
+            self.v_prev = v
+            self.w_prev = w
+
+            # Compute Next State Position
+            self.xt = self.x_t(self.xt,[v,w],self.dt)
+
+            s_prime = (self.xt[0], self.xt[1])
+
+            # Update Error Integral
+            self.e_v_intg += self.e_v
+            self.e_w_intg += self.e_w
+
+            self.robot_path.append([self.xt[0],self.xt[1]])
+        
+        return self.robot_path
+
+    # Sampling Function Referenced from Probabilistic Robotics Table 5.4 (sample_normal_distribution)
+    def sample(self,b):
+
+        return b/6 * np.random.uniform(-1,1,12).sum()
+
+    def x_t(self, x_t_p, u_t, dt):
+        """
+        :param X_t_p: Current robot state [x, y, theta]
+        :param u_t: Control input [v, w] 
+        :param dt: Time step
+        """
+        a1 = a2 = a3 = a4 = a5 = a6 = self.noise
+
+        # Add motion noise to translational and rotational velocities
+        v_hat = u_t[0] + self.sample(a1 * abs(u_t[0]) + a2 * abs(u_t[1]))
+        w_hat = u_t[1] + self.sample(a3 * abs(u_t[0]) + a4 * abs(u_t[1]))
+        gamma = self.sample(a5 * abs(u_t[0]) + a6 * abs(u_t[1]))
+
+        # Straight-line motion when rotational speed is zero
+        if w_hat == 0:
+            x_dt = np.array([v_hat * cos(x_t_p[2]) * dt, v_hat * sin(x_t_p[2]) * dt, 0])
+
+        # Circular motion: compute Instantaneous Center of Rotation (ICR)
+        else:
+            # Instantaneous Center of Rotation (ICR)
+            xc = x_t_p[0] - (v_hat/w_hat)*sin(x_t_p[2])
+            yc = x_t_p[1] + (v_hat/w_hat)*cos(x_t_p[2])
+
+            # Rotation matrix for turning around ICR
+            R = np.array([[cos(w_hat*dt), -sin(w_hat*dt), 0],
+                        [sin(w_hat*dt),  cos(w_hat*dt), 0],
+                        [0        ,          0, 1]])
+
+            # Apply rotation and translation relative to ICR
+            x_dt = np.matmul(R,np.array([x_t_p[0] - xc, 
+                                         x_t_p[1] - yc,
+                                         w_hat * dt + gamma * dt]))
+
+            # Shift reference to ICR
+            x_t_p = np.array([xc,yc,x_t_p[2]])
+
+        # Compute new state by adding displacement
+        x_t = x_t_p + x_dt
+        
+        # Wrap Angles
+        x_t[2] = (x_t[2] + np.pi) % (2 * np.pi) - np.pi     
+
+        return x_t
 
 Res2 = 0.1
 
-w,h,grid = build_grid([-2.0,5.0], [-6.0,6.0], Res2, obstacle_locations)
+# robot = Controller(build_grid, Res2, (2.45,-3.55,-np.pi/2), (0.95,-1.55,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
+# robot = Controller(build_grid, Res2, (4.95,-0.05,-np.pi/2),(2.45,0.25,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
+# robot = Controller(build_grid, Res2, (-0.55,1.45,-np.pi/2),(1.95,3.95,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.5)
+robot = Controller(build_grid, Res2, (0.5,-1.5,-np.pi/2), (0.5,1.5,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.5)
+# robot = Controller(build_grid, Res2, (4.5,3.5,-np.pi/2), (4.5,-1.5,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
+# robot = Controller(build_grid, Res2, (-0.5,5.5,-np.pi/2), (1.5,-3.5,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
 
+path = robot.Traj
 
+x_path = [p[0] for p in path]
+y_path = [p[1] for p in path]
 
-# path = Online_A_Star([w,h,grid], Res2, (2.45,-3.55),(0.95,-1.55))
-# path = Online_A_Star([w,h,grid], Res2, (4.95,-0.05),(2.45,0.25))
-# path = Online_A_Star([w,h,grid], Res2, (-0.55,1.45),(1.95,3.95))
+for i,p in enumerate(path):
 
-# x_path = [p[0] for p in path]
-# y_path = [p[1] for p in path]
+        # Find Corresponding Grid Index of Path Position
+        x_indx = int(np.where(robot.width == p[0])[0][0])
+        y_indx = int(np.where(robot.height == p[1])[0][0])
 
-# for i,p in enumerate(path):
-
-#         # Find Corresponding Grid Index of Path Position
-#         x_indx = int(np.where(w == p[0])[0][0])
-#         y_indx = int(np.where(h == p[1])[0][0])
-
-#         # If Position is Start Color it Red
-#         if i == 0:
-#             grid[y_indx][x_indx] = 3    # 3 = Red
+        # If Position is Start Color it Red
+        if i == 0:
+            robot.grid[y_indx][x_indx] = 3    # 3 = Red
             
-#         # If Position is Goal Color it Red
-#         elif i == len(path) - 1:
-#             grid[y_indx][x_indx] = 4    # 4 = Blue
+        # If Position is Goal Color it Red
+        elif i == len(path) - 1:
+            robot.grid[y_indx][x_indx] = 4    # 4 = Blue
             
-#         # Otherwise Color the Path green
-#         else:
-#             grid[y_indx][x_indx] = 2
+        # Otherwise Color the Path green
+        else:
+            robot.grid[y_indx][x_indx] = 2
 
-# control_path, ffwd = feed_forward_control((2.45,-3.55,-np.pi/2),(0.95,-1.55,np.pi/2),np.array(path),0.1)
-# control_path, ffwd = feed_forward_control((4.95,-0.05,-np.pi/2),(2.45,0.25,np.pi/2),np.array(path),0.1)
-# control_path, ffwd = feed_forward_control((-0.55,1.45,-np.pi/2),(1.95,3.95,np.pi/2),np.array(path),0.1)
+# control_path, ffwd = robot.Offline_PID_Controller()
+control_path = robot.Online_PID_Controller()
 
-# cx =[]
-# cy = []
+cx =[]
+cy = []
 
-# for c in control_path:
-#     cx.append(c[0])
-#     cy.append(c[1])
-
-
-
+for c in control_path:
+    cx.append(c[0])
+    cy.append(c[1])
 
 # Color Map for Grid Position Values (i.e. 0,1,2,3,4)
 cmap = colors.ListedColormap(['white', 'black', 'lime', 'red', 'blue'])
 
 # Grid Width and Length for Plot Creation
-grid_width = grid.shape[1]
-grid_height = grid.shape[0]
+grid_width = robot.grid.shape[1]
+grid_height = robot.grid.shape[0]
 
 plt.figure(figsize=(6,10))
 # Display 2D Grid
-plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res2 - 2 , -6, grid_height*Res2 - 6])
+plt.imshow(robot.grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res2 - 2 , -6, grid_height*Res2 - 6])
 
 # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
 ax = plt.gca()
@@ -780,7 +921,7 @@ plt.title("Test")
 plt.xlabel("X [m]")
 plt.ylabel("Y [m]")
 
-plt.plot(ffwd[:, 0], ffwd[:, 1])
+# plt.plot(ffwd[:, 0], ffwd[:, 1])
 plt.plot(cx, cy)
 plt.show()
 
