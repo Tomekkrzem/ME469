@@ -492,6 +492,31 @@ def Online_A_Star(map_vals, res, start, goal):
 
 
 #--------------------------------------------------------------------------------------------------------------------------#
+class Controller:
+
+    def __init__(self, start):
+        
+        # Starting State
+        self.xt = start
+
+        # Initilialize Errors
+        self.e_v = None         # Linear Error
+        self.e_w = None         # Angular Error
+
+        # Initialize Previous State Errors
+        self.prev_e_v = None
+        self.prev_e_w = None
+
+        # Initialize Previous State Velocities 
+        self.v_prev = 0
+        self.w_prev = 0
+        
+        # Initialize Summation for Integral Term in PID Controller
+        self.e_v_intg = 0
+        self.e_w_intg = 0
+
+        # Add Initial State to Path
+        self.robot_path = [[self.xt[0], self.xt[1]]]
 
 def bezier_curve(c_points, num_points, check_collisions):
 
@@ -500,7 +525,7 @@ def bezier_curve(c_points, num_points, check_collisions):
     t = np.linspace(0, 1, num_points)
 
     output_curve = np.zeros((num_points, 2))
-    offset = 0.2
+    offset = 0.3
 
     obstacles = [(o[0], o[1], 0.8, 0.8) for o in obstacle_locations]
 
@@ -528,7 +553,6 @@ def bezier_curve(c_points, num_points, check_collisions):
                     else:
                         output_curve[i][1] = oy + np.sign(y_to_cy_dist) * (h/2 + offset)
 
-
     return output_curve
 
 
@@ -551,18 +575,16 @@ def feed_forward_control(start, goal, T, dt):
 
         ffwd_points[i+1] = (x,y, theta)
 
-    Kp_v = 0.09
-    Kp_w = 1.25
-    Kd_v = 0.4
-    Kd_w = 0.5
-
-    # Kp_v = 1
-    # Kp_w = 2
-    # Kd_v = 3
-    # Kd_w = 2
+    Kp_v = 0.5
+    Kp_w = 1
+    Ki_v = 0.0001
+    Ki_w = 0.0005
+    Kd_v = 0.5
+    Kd_w = 1
 
     # Current State
     xt = start
+
     # Initilialize Errors
     e_v = None
     e_w = None
@@ -573,24 +595,24 @@ def feed_forward_control(start, goal, T, dt):
     prev_e_v = None
     prev_e_w = None
 
+    e_v_intg = 0
+    e_w_intg = 0
+
     robot_path = [[xt[0],xt[1]]]
 
     # Loop Until Robot Reaches Completes Trajectory
     for i,p in enumerate(ffwd_points):
 
-        # Error Computation Referenced From "Nonlinear Model Predictive Control for Mobile Robot Using Varying-Parameter Convergent Differential Neural Network"
-        R = np.array([[cos(theta), -sin(theta), 0],
-                      [sin(theta), cos(theta), 0],
-                      [0 , 0, 1]])
         # Compute Error Between Desired State and Actual State
-        diff_x_xT = np.array([p[0] - xt[0],
-                              p[1] - xt[1],
-                              p[2] - xt[2]])
+        x_e = p[0] - xt[0]
+        y_e = p[1] - xt[1]
+        theta = xt[2]
 
-        Xe = np.matmul(R, diff_x_xT)
-
-        e_v = np.sqrt(Xe[0]**2 + Xe[1]**2)
-        e_w = (Xe[2] + np.pi) % (2 * np.pi) - np.pi
+        e_v = np.sqrt(x_e**2 + y_e**2)
+ 
+        theta_desired = np.atan2(p[1] - xt[1], p[0] - xt[0])
+        e_w = theta_desired - theta
+        e_w = (e_w + np.pi) % (2 * np.pi) - np.pi
 
         # Compute Derivative (i.e. Change between Current and Previous State)
         if prev_e_v is not None and prev_e_w is not None: 
@@ -601,11 +623,11 @@ def feed_forward_control(start, goal, T, dt):
             d_ew = 0
 
         # Compute Velocity
-        v = Kp_v * e_v + Kd_v * d_ev
-        w = Kp_w * e_w + Kd_w * d_ew
+        v = Kp_v * e_v + Ki_v * e_v_intg + Kd_v * d_ev 
+        w = Kp_w * e_w + Ki_w * e_w_intg + Kd_w * d_ew 
         w = (w + np.pi) % (2 * np.pi) - np.pi
 
-        # compute rate-limited change
+        # Limit the Accelerations
         dv = np.clip(v - v_prev, -0.288 * dt, 0.288 * dt)
         dw = np.clip(w - w_prev, -5.579 * dt, 5.579 * dt)
 
@@ -623,6 +645,10 @@ def feed_forward_control(start, goal, T, dt):
 
         # Compute Next State Position
         xt = x_t(xt,[v,w],dt)
+
+        # Update Error Integral
+        e_v_intg += e_v
+        e_w_intg += e_w
 
         robot_path.append([xt[0],xt[1]])
 
@@ -683,43 +709,46 @@ Res2 = 0.1
 
 w,h,grid = build_grid([-2.0,5.0], [-6.0,6.0], Res2, obstacle_locations)
 
-# path = Online_A_Star([w,h,grid], Res2, (-1.8,-4),(1,3.5))
+
+
 # path = Online_A_Star([w,h,grid], Res2, (2.45,-3.55),(0.95,-1.55))
-path = Online_A_Star([w,h,grid], Res2, (4.95,-0.05),(2.45,0.25))
+# path = Online_A_Star([w,h,grid], Res2, (4.95,-0.05),(2.45,0.25))
 # path = Online_A_Star([w,h,grid], Res2, (-0.55,1.45),(1.95,3.95))
 
-x_path = [p[0] for p in path]
-y_path = [p[1] for p in path]
+# x_path = [p[0] for p in path]
+# y_path = [p[1] for p in path]
 
-for i,p in enumerate(path):
+# for i,p in enumerate(path):
 
-        # Find Corresponding Grid Index of Path Position
-        x_indx = int(np.where(w == p[0])[0][0])
-        y_indx = int(np.where(h == p[1])[0][0])
+#         # Find Corresponding Grid Index of Path Position
+#         x_indx = int(np.where(w == p[0])[0][0])
+#         y_indx = int(np.where(h == p[1])[0][0])
 
-        # If Position is Start Color it Red
-        if i == 0:
-            grid[y_indx][x_indx] = 3    # 3 = Red
+#         # If Position is Start Color it Red
+#         if i == 0:
+#             grid[y_indx][x_indx] = 3    # 3 = Red
             
-        # If Position is Goal Color it Red
-        elif i == len(path) - 1:
-            grid[y_indx][x_indx] = 4    # 4 = Blue
+#         # If Position is Goal Color it Red
+#         elif i == len(path) - 1:
+#             grid[y_indx][x_indx] = 4    # 4 = Blue
             
-        # Otherwise Color the Path green
-        else:
-            grid[y_indx][x_indx] = 2
+#         # Otherwise Color the Path green
+#         else:
+#             grid[y_indx][x_indx] = 2
 
-# control_path, ffwd = feed_forward_control((-1.8,-4,-np.pi/2),(1,3.5,-np.pi/2),np.array(path),0.1)
 # control_path, ffwd = feed_forward_control((2.45,-3.55,-np.pi/2),(0.95,-1.55,np.pi/2),np.array(path),0.1)
-control_path, ffwd = feed_forward_control((4.95,-0.05,-np.pi/2),(2.45,0.25,np.pi/2),np.array(path),0.1)
+# control_path, ffwd = feed_forward_control((4.95,-0.05,-np.pi/2),(2.45,0.25,np.pi/2),np.array(path),0.1)
 # control_path, ffwd = feed_forward_control((-0.55,1.45,-np.pi/2),(1.95,3.95,np.pi/2),np.array(path),0.1)
 
-cx =[]
-cy = []
+# cx =[]
+# cy = []
 
-for c in control_path:
-    cx.append(c[0])
-    cy.append(c[1])
+# for c in control_path:
+#     cx.append(c[0])
+#     cy.append(c[1])
+
+
+
 
 # Color Map for Grid Position Values (i.e. 0,1,2,3,4)
 cmap = colors.ListedColormap(['white', 'black', 'lime', 'red', 'blue'])
