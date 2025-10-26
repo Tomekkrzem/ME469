@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 import os
 
-
 landmark_dir = os.path.dirname(os.path.abspath(__file__))
 landmark_fp = os.path.join(landmark_dir, "datasets/ds1_Landmark_Groundtruth.dat")
 landmark_data = pd.read_table(landmark_fp, sep=r'\s+', skiprows=3).to_numpy()
@@ -25,7 +24,7 @@ def build_grid(x_range, y_range, res, obstacles = []):
 
         # Truncate the Values in the Linespaces
         width = np.floor(np.round(width,decimals = 1) * 10) / 10
-        height = np.floor(np.round(height,decimals = 1) * 10) / 10
+        height = np.ceil(np.round(height,decimals = 1) * 10) / 10
 
         # Initializing 2D Grid of Empty Positions
         grid_vals = np.zeros((len(height),len(width)))
@@ -87,14 +86,13 @@ def build_grid(x_range, y_range, res, obstacles = []):
 
     return width, height, grid_vals
 
+
 # Heuristic Function for A*
 def Heuristic(node_s, node_g):
     
     # Euclidean Distance
     return np.sqrt((node_g[0] - node_s[0])**2 + (node_g[1] - node_s[1])**2)
 
-    # # Chebyshev Distance
-    # return np.max((node_g[0] - node_s[0], node_g[1] - node_s[1]))
 
 # A* Start Algorithm
 def A_star (map_vals, res, start, goal):
@@ -222,6 +220,7 @@ def A_star (map_vals, res, start, goal):
                 parent[neighbor_node] = curr_node
 
     return closed_set, []
+
 
 # Online A* Cost Function - LRTA_Cost Function Referenced from Articial Intelligence Ch. 4.5.3
 def Online_A_Star_Cost(map_vals, goal, res, s, a, s_prime, H):
@@ -369,142 +368,181 @@ def Online_A_Star(map_vals, res, start, goal):
         # Add Next State to Path
         path.append(s_prime)
 
+# Grid Resolutions
+Res = 1
+Res2 = 0.1
 
+# Coarse Grid Representation Variables
+c_w, c_h, c_grid = build_grid([-2.0,5.0], [-6.0,6.0], Res, obstacle_locations)
+# Fine Grid Representation Variables
+f_w, f_h, f_grid = build_grid([-2.0,5.0], [-6.0,6.0], Res2, obstacle_locations)
 
-
-# # Grid Resolutions
-# Res = 1
-# Res2 = 0.1
-
-# # Coarse Grid Representation Variables
-# c_w, c_h, c_grid = build_grid([-2.0,5.0], [-6.0,6.0], Res, obstacle_locations)
-# # Fine Grid Representation Variables
-# f_w, f_h, f_grid = build_grid([-2.0,5.0], [-6.0,6.0], Res2, obstacle_locations)
-
-# s_g_list_step = [[Res,(0.5,-1.5),(0.5,1.5),0],       # STEP 3 START-GOAL POSITIONS
-#                  [Res,(4.5,3.5),(4.5,-1.5),0],
-#                  [Res,(-0.5,5.5),(1.5,-3.5),0],
+s_g_list_step = [[Res,(0.5,-1.5),(0.5,1.5),0],       # STEP 3 START-GOAL POSITIONS
+                 [Res,(4.5,3.5),(4.5,-1.5),0],
+                 [Res,(-0.5,5.5),(1.5,-3.5),0],
                   
-#                  [Res,(0.5,-1.5),(0.5,1.5),1],       # STEP 5 START-GOAL POSITIONS
-#                  [Res,(4.5,3.5),(4.5,-1.5),1],
-#                  [Res,(-0.5,5.5),(1.5,-3.5),1],
+                 [Res,(0.5,-1.5),(0.5,1.5),1],       # STEP 5 START-GOAL POSITIONS
+                 [Res,(4.5,3.5),(4.5,-1.5),1],
+                 [Res,(-0.5,5.5),(1.5,-3.5),1],
                   
-#                  [Res2,(2.45,-3.55),(0.95,-1.55),1], # STEP 7 START-GOAL POSITIONS
-#                  [Res2,(4.95,-0.05),(2.45,0.25),1],
-#                  [Res2,(-0.55,1.45),(1.95,3.95),1]]
+                 [Res2,(2.45,-3.55),(0.95,-1.55),1], # STEP 7 START-GOAL POSITIONS
+                 [Res2,(4.95,-0.05),(2.45,0.25),1],
+                 [Res2,(-0.55,1.45),(1.95,3.95),1]]
 
-# # Question Number
-# q_count = 3
-# # Question Part Number
-# count = 1
+# Question Number
+q_count = 3
+# Question Part Number
+count = 1
 
-# # For Each Start-Goal Pair
-# for s_g in s_g_list_step:
+# For Each Start-Goal Pair
+for s_g in s_g_list_step:
     
-#     # Extract Resolution, Start and Goal
-#     Res, s, g, Alg_type = s_g
+    # Extract Resolution, Start and Goal
+    Res, s, g, Alg_type = s_g
     
-#     # Grid Representation Variables
-#     if Res < 1:
-#         w = f_w
-#         h = f_h
-#         grid = f_grid.copy()
-#     else:
-#         w = c_w
-#         h = c_h
-#         grid = c_grid.copy()
+    # Grid Representation Variables
+    if Res < 1:
+        w = f_w
+        h = f_h
+        grid = f_grid.copy()
+    else:
+        w = c_w
+        h = c_h
+        grid = c_grid.copy()
 
-#     # If Alg_type Is 1 Use Online A*
-#     if Alg_type:
-#         path = Online_A_Star([w,h,grid], Res, s, g)
+    # If Alg_type Is 1 Use Online A*
+    if Alg_type:
+        path = Online_A_Star([w,h,grid], Res, s, g)
         
-#         if Res < 1:
-#             q_count = 7
-#         else: 
-#             q_count = 5
+        if Res < 1:
+            q_count = 7
+        else: 
+            q_count = 5
         
-#         plot_title = f"Online A* (Res = {Res})"
-#         fig_title = f"Question_{q_count}_{count}"
+        plot_title = f"Online A* (Res = {Res})"
+        fig_title = f"Question_{q_count}_{count}"
         
-#         count += 1
-#         if count == 4:
-#             count = 1
+        count += 1
+        if count == 4:
+            count = 1
     
-#     # If Alg_type is 0 Use A_Star
-#     else:
-#         c_set, path = A_star([w,h,grid], Res, s, g)
+    # If Alg_type is 0 Use A_Star
+    else:
+        c_set, path = A_star([w,h,grid], Res, s, g)
                 
-#         plot_title = f"A* (Res = {Res})"
-#         fig_title = f"Question_{q_count}_{count}"
+        plot_title = f"A* (Res = {Res})"
+        fig_title = f"Question_{q_count}_{count}"
         
-#         count += 1
-#         if count == 4:
-#             count = 1
+        count += 1
+        if count == 4:
+            count = 1
     
-#     # Update Path Positons in Grid
-#     for i,p in enumerate(path):
+    # Update Path Positons in Grid
+    for i,p in enumerate(path):
         
-#         # Find Corresponding Grid Index of Path Position
-#         x_indx = int(np.where(w == p[0])[0][0])
-#         y_indx = int(np.where(h == p[1])[0][0])
+        # Find Corresponding Grid Index of Path Position
+        x_indx = int(np.where(w == p[0])[0][0])
+        y_indx = int(np.where(h == p[1])[0][0])
 
-#         # If Position is Start Color it Red
-#         if i == 0:
-#             grid[y_indx][x_indx] = 3    # 3 = Red
+        # If Position is Start Color it Red
+        if i == 0:
+            grid[y_indx][x_indx] = 3    # 3 = Red
             
-#         # If Position is Goal Color it Red
-#         elif i == len(path) - 1:
-#             grid[y_indx][x_indx] = 4    # 4 = Blue
+        # If Position is Goal Color it Red
+        elif i == len(path) - 1:
+            grid[y_indx][x_indx] = 4    # 4 = Blue
             
-#         # Otherwise Color the Path green
-#         else:
-#             grid[y_indx][x_indx] = 2
+        # Otherwise Color the Path green
+        else:
+            grid[y_indx][x_indx] = 2
 
-#     # Color Map for Grid Position Values (i.e. 0,1,2,3,4)
-#     cmap = colors.ListedColormap(['white', 'black', 'lime', 'red', 'blue'])
+    # Color Map for Grid Position Values (i.e. 0,1,2,3,4)
+    cmap = colors.ListedColormap(['white', 'black', 'orange', 'red', 'lime'])
 
-#     # Grid Width and Length for Plot Creation
-#     grid_width = grid.shape[1]
-#     grid_height = grid.shape[0]
+    # Grid Width and Length for Plot Creation
+    grid_width = grid.shape[1]
+    grid_height = grid.shape[0]
 
-#     plt.figure(figsize=(6,10))
-#     # Display 2D Grid
-#     plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res - 2 , -6, grid_height*Res - 6])
+    plt.figure(figsize=(6,10))
+    # Display 2D Grid
+    plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res - 2 , -6, grid_height*Res - 6])
+    
+    plt.scatter(path[0][0] + Res/2, path[0][1] + Res/2, c='r', edgecolor='k', label = 'Start', zorder=3)
+    plt.scatter(path[-1][0] + Res/2, path[-1][1] + Res/2, c='lime', edgecolor='k', label = 'Goal', zorder=3)
 
-#     # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
-#     ax = plt.gca()
+    # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
+    ax = plt.gca()
 
-#     # Check that the Value to Label is a Multiple of 0.5 
-#     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
-#     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
+    # Check that the Value to Label is a Multiple of 0.5 
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
 
-#     # Create Grid Lines
-#     x_ticks = np.arange(-2, grid_width*Res - 2, Res)
-#     y_ticks = np.arange(-6, grid_height*Res - 6, Res)
-#     plt.xticks(x_ticks)
-#     plt.yticks(y_ticks)
-#     plt.grid(True, color='gray', linewidth = Res*1.5)
+    # Create Grid Lines
+    x_ticks = np.arange(-2, grid_width*Res - 2, Res)
+    y_ticks = np.arange(-6, grid_height*Res - 6, Res)
+    plt.xticks(x_ticks)
+    plt.yticks(y_ticks)
+    plt.grid(True, color='gray', linewidth = Res*1.5)
 
-#     # Display Plot
-#     plt.title(plot_title)
-#     plt.xlabel("X [m]")
-#     plt.ylabel("Y [m]")
-#     plt.savefig('asgn1/' + fig_title)
-#     plt.show()
+    # Display Plot
+    plt.title(plot_title)
+    plt.xlabel("X [m]")
+    plt.ylabel("Y [m]")
+    plt.legend()
+    plt.savefig('asgn1/' + fig_title)
+    plt.show()
 
 
 #--------------------------------------------------------------------------------------------------------------------------#
 class Controller:
 
-    def __init__(self, Grid, res, start, goal, sqr_size, o_locs, noise, dt, offset=0.3):
+    def __init__(self, Grid, res, start, goal, sqr_size, o_locs, noise, dt, plot_traj, offset=0.3):
         
         self.width, self.height, self.grid = Grid([-2.0,5.0], [-6.0,6.0], res, o_locs)
+
+        _, _, self.potential_grid = Grid([-2.0,5.0], [-6.0,6.0], res, o_locs)
 
         self.res = res
 
         # Trajectory
         self.Traj = Online_A_Star([self.width,self.height,self.grid], res, (start[0],start[1]),(goal[0],goal[1]))
         
+        # Add Trajectory Points in Grid if Specified
+        if plot_traj:
+            for i,p in enumerate(self.Traj):
+
+                # Find Corresponding Grid Index of Path Position
+                x_indx = int(np.where(self.width == p[0])[0][0])
+                y_indx = int(np.where(self.height == p[1])[0][0])
+
+                # If Position is Start Color it Red
+                if i == 0:
+                    self.grid[y_indx][x_indx] = 3    # 3 = Red
+                    
+                # If Position is Goal Color it Blue
+                elif i == len(self.Traj) - 1:
+                    self.grid[y_indx][x_indx] = 4    # 4 = Blue
+
+                # Otherwise Color the Path Green
+                else:
+                    self.grid[y_indx][x_indx] = 2
+        
+        # Otherwise Just Add Start and End Points in Grid
+        else: 
+            # Find Corresponding Grid Index of Start Point
+            x_indx = int(np.where(self.width == self.Traj[0][0])[0][0])
+            y_indx = int(np.where(self.height == self.Traj[0][1])[0][0])
+
+            # Color Start Point Red
+            self.grid[y_indx][x_indx] = 3    # 3 = Red
+                
+            # Find Corresponding Grid Index of Start Point
+            x_indx = int(np.where(self.width == self.Traj[-1][0])[0][0])
+            y_indx = int(np.where(self.height == self.Traj[-1][1])[0][0])
+
+            # Color Goal Point Blue
+            self.grid[y_indx][x_indx] = 4    # 4 = Blue
+
         # Simulation Time Step
         self.dt = dt
         
@@ -531,7 +569,7 @@ class Controller:
         self.e_w_intg = 0
 
         # Add Initial State to Path
-        self.robot_path = [[self.xt[0], self.xt[1]]]
+        self.robot_path = [[self.xt[0], self.xt[1], self.xt[2]]]
 
         # Obstacle Clearance Offset for Trajectory Smoothing
         self.obst_off = offset
@@ -541,7 +579,6 @@ class Controller:
 
         # Movement Noise
         self.noise = noise
-
 
     def bezier_curve(self, c_points, num_points, check_collisions):
 
@@ -557,27 +594,50 @@ class Controller:
                 # Bezier Curve Equation Referenecd From "Path Planning based on Bezier Curve for Autonomous Ground Vehicles"
                 output_curve[i] += c_points[j] * math.comb(n, j) * (t[i] ** j) * ((1 - t[i]) ** (n - j)) 
 
+            # If User Specifies Collision Checking
             if check_collisions:
 
-                # Collision Checking
+                # Loop Through All Obstacles
                 for o in self.obstacles:
                     
+                    # Select Current Trajectory Point
                     p = output_curve[i]
+
+                    # Extract Obstacle Properties
                     ox, oy, w, h = o
+
+                    # If Resouliton is Finer
+                    if self.res < 1: 
+
+                        # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
+                        ox = np.ceil(ox * 10) / 10 - 0.05
+                        oy = np.ceil(oy * 10) / 10 - 0.05
+
+                    # If Resouliton is Coarser
+                    else: 
+
+                        # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
+                        ox = np.ceil(ox)
+                        oy = np.ceil(oy)
 
                     # X-Distance Between Point and Obstacle Center
                     x_to_cx_dist = p[0] - ox
                     # Y-Distance Between Point and Obstacle Center
                     y_to_cy_dist = p[1] - oy
 
+                    # If Trajectory Position is Inside Obstacle
                     if abs(x_to_cx_dist) <= w/2 and abs(y_to_cy_dist) <= h/2:
-
+                        
+                        # If Collision is Closer to Obstacle Center in X-Direction
                         if w/2 - abs(x_to_cx_dist) < h/2 - abs(y_to_cy_dist):
 
+                            # Offset the X-Position of the Trajectory Position
                             output_curve[i][0] = ox + np.sign(x_to_cx_dist) * (w/2 + self.obst_off)
 
+                        # If Collision is Closer to Obstacle Center in X-Direction
                         else:
 
+                            # Offset the Y-Position of the Trajectory Position
                             output_curve[i][1] = oy + np.sign(y_to_cy_dist) * (h/2 + self.obst_off)
 
         return output_curve
@@ -593,21 +653,28 @@ class Controller:
         ffwd_points = np.zeros((len(smooth_T), 3))
         ffwd_points[0] = self.xt
 
+        # Loop Through All Trajectory Points
         for i in range(len(smooth_T) - 1):
-
+            
+            # Compute Heading of Trajectory Points
             x,y = smooth_T[i+1]
             x_p, y_p = smooth_T[i]
             theta = np.atan2((y - y_p),(x - x_p))
+
+            # Wrap Angles
             theta = (theta + np.pi) % (2 * np.pi) - np.pi
 
             ffwd_points[i+1] = (x,y, theta)
 
+        # Proportional Terms for Velocity Control
         Kp_v = 0.5
         Kp_w = 1
-        Ki_v = 0.0001
+        # Intergral Terms for Velocity Control
+        Ki_v = 0.001
         Ki_w = 0.0005
-        Kd_v = 0.5
-        Kd_w = 1
+        # Derivative Terms for Velocity Control
+        Kd_v = 0.4
+        Kd_w = 0.5
 
         # Loop Until Robot Reaches Completes Trajectory
         for i,p in enumerate(ffwd_points):
@@ -661,31 +728,35 @@ class Controller:
             self.e_v_intg += self.e_v
             self.e_w_intg += self.e_w
 
-            self.robot_path.append([self.xt[0],self.xt[1]])
+            # Construct Robot Path
+            self.robot_path.append([self.xt[0]+0.05,self.xt[1]+0.05, self.xt[2]])
 
         return self.robot_path, ffwd_points
     
     def Online_PID_Controller(self):
 
-        Kp_v = 0.01
-        Kp_w = 0.9
-        Ki_v = 0.0001
-        Ki_w = 0
-        Kd_v = 0
-        Kd_w = 0
+        # Proportional Terms for Velocity Control
+        Kp_v = 0.02
+        Kp_w = 1
+        # Intergral Terms for Velocity Control
+        Ki_v = 0.0005
+        Ki_w = 0.005
+        # Derivative Terms for Velocity Control
+        Kd_v = 0.9
+        Kd_w = 1
 
-        thresh = 0.05
+        # Point Convergence Threshold
+        thresh = 0.08
 
+        # Resolution for Online Path Planning
         res = self.res
 
         # If the Resolution is Fine Floor the Start and Goal Position Values to One Decimal
         if res < 1: 
             goal = (np.floor(self.xg[0] * 10) / 10, np.floor(self.xg[1] * 10) / 10)
-            start = (np.floor(self.xt[0] * 10) / 10, np.floor(self.xt[1] * 10) / 10)
         # If the Resolution is Coarses Floor the Start and Goal Position to Zero Decimals
         else: 
             goal = (np.floor(self.xg[0]), np.floor(self.xg[1]))
-            start = (np.floor(self.xt[0]), np.floor(self.xt[1]))
 
         # Initialize Current State
         s_prime = (self.xt[0], self.xt[1])
@@ -744,59 +815,122 @@ class Controller:
             # Compute Next State By Performing Action
             s_prime = (round((np.floor(s_prime[0] * 10) / 10) + a[0],1),
                     round((np.floor(s_prime[1] * 10) / 10) + a[1],1))
+            
+            # Loop While the Robot Position Is Not Within a Threshold of a Control Point
+            while np.sqrt((s_prime[0] - self.xt[0])**2 + (s_prime[1] - self.xt[1])**2) > thresh:
 
-            # Compute Linear Error as Distance Between Trajectory Point and Robot Position
-            x_e = s_prime[0] - self.xt[0]
-            y_e = s_prime[1] - self.xt[1]
-            self.e_v = np.sqrt(x_e**2 + y_e**2)
+                # Compute Linear Error as Distance Between Trajectory Point and Robot Position
+                x_e = s_prime[0] - self.xt[0]
+                y_e = s_prime[1] - self.xt[1]
+                self.e_v = np.sqrt(x_e**2 + y_e**2)
 
-            # Compute Angular Error as the Difference between Desired Heading to Converge to Trajectory and Robot Heading
-            theta = self.xt[2]
-            theta_desired = np.atan2(y_e, x_e)
-            self.e_w = theta_desired - theta
+                # Compute Angular Error as the Difference between Desired Heading to Converge to Trajectory and Robot Heading
+                theta = self.xt[2]
+                theta_desired = np.atan2(y_e, x_e)
+                self.e_w = theta_desired - theta
 
-            # Wrap Angles
-            self.e_w = (self.e_w + np.pi) % (2 * np.pi) - np.pi 
+                # Wrap Angles
+                self.e_w = (self.e_w + np.pi) % (2 * np.pi) - np.pi 
 
-            # Compute Error Derivative
-            if self.prev_e_v is not None and self.prev_e_w is not None: 
-                d_ev = self.e_v - self.prev_e_v 
-                d_ew = self.e_w - self.prev_e_w
-            else: 
-                d_ev = 0 
-                d_ew = 0
+                # Compute Error Derivative
+                if self.prev_e_v is not None and self.prev_e_w is not None: 
+                    d_ev = self.e_v - self.prev_e_v 
+                    d_ew = self.e_w - self.prev_e_w
+                else: 
+                    d_ev = 0 
+                    d_ew = 0
 
-            # Compute Velocity
-            v = Kp_v * self.e_v + Ki_v * self.e_v_intg + Kd_v * d_ev 
-            w = Kp_w * self.e_w + Ki_w * self.e_w_intg + Kd_w * d_ew 
-            w = (w + np.pi) % (2 * np.pi) - np.pi
+                # Compute Velocity
+                v = Kp_v * self.e_v + Ki_v * self.e_v_intg + Kd_v * d_ev 
+                w = Kp_w * self.e_w + Ki_w * self.e_w_intg + Kd_w * d_ew 
+                w = (w + np.pi) % (2 * np.pi) - np.pi
 
-            # Limit the Accelerations
-            dv = np.clip(v - self.v_prev, -0.288 * self.dt, 0.288 * self.dt)
-            dw = np.clip(w - self.w_prev, -5.579 * self.dt, 5.579 * self.dt)
+                # Limit the Accelerations
+                dv = np.clip(v - self.v_prev, -0.288 * self.dt, 0.288 * self.dt)
+                dw = np.clip(w - self.w_prev, -5.579 * self.dt, 5.579 * self.dt)
 
-            # Update Velocites with Limited Accelerations
-            v = self.v_prev + dv
-            w = self.w_prev + dw
+                # Update Velocites with Limited Accelerations
+                v = self.v_prev + dv
+                w = self.w_prev + dw
 
-            # Update Previous Errors
-            self.prev_e_v = self.e_v
-            self.prev_e_w = self.e_w
+                # Update Previous Errors
+                self.prev_e_v = self.e_v
+                self.prev_e_w = self.e_w
 
-            # Update Previous Velocity
-            self.v_prev = v
-            self.w_prev = w
+                # Update Previous Velocity
+                self.v_prev = v
+                self.w_prev = w
 
-            # Compute Next State Position
-            self.xt = self.x_t(self.xt,[v,w],self.dt)
+                # Temporary State Calculation
+                temp_xt = self.x_t(self.xt,[v,w],self.dt)
+                
+                # Initialize Collision Flag
+                collided = False
 
-            s_prime = (self.xt[0], self.xt[1])
+                # Loop Through All Obstacles
+                for o in self.obstacles:
 
-            # Update Error Integral
-            self.e_v_intg += self.e_v
-            self.e_w_intg += self.e_w
+                    # Extract Obstacle Properties
+                    ox, oy, w, h = o
 
-            self.robot_path.append([self.xt[0],self.xt[1]])
+                    # If Resouliton is Finer
+                    if self.res < 1: 
+
+                        # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
+                        ox = np.ceil(ox * 10) / 10 - 0.05
+                        oy = np.ceil(oy * 10) / 10 - 0.05
+
+                    # If Resouliton is Coarser
+                    else: 
+
+                        # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
+                        ox = np.ceil(ox)
+                        oy = np.ceil(oy)
+
+
+                    # X-Distance Between Point and Obstacle Center
+                    x_to_cx_dist = temp_xt[0] - ox
+                    # Y-Distance Between Point and Obstacle Center
+                    y_to_cy_dist = temp_xt[1] - oy
+
+                    # If Trajectory Position is Inside Obstacle
+                    if abs(x_to_cx_dist) <= w/2 and abs(y_to_cy_dist) <= h/2:
+                        
+                        # Update Collision Flag
+                        collided = True
+
+                        # If Collision is Closer to Obstacle Center in X-Direction
+                        if w/2 - abs(x_to_cx_dist) < h/2 - abs(y_to_cy_dist):
+       
+                            self.xt[0] = self.xt[0]
+                            self.xt[1] = temp_xt[1]
+                            self.xt[2] = temp_xt[2]
+
+                        # If Collision is Closer to Obstacle Center in Y-Direction
+                        else:
+                            
+                            self.xt[0] = temp_xt[0]
+                            self.xt[1] = self.xt[1]
+                            self.xt[2] = temp_xt[2]
+
+                        # Don't Check Other Obstacles
+                        break
+                
+                # If No Collision is Detected 
+                if not collided:
+                    
+                    # Compute Next State Position
+                    self.xt = temp_xt
+
+                # Update Error Integral
+                self.e_v_intg += self.e_v
+                self.e_w_intg += self.e_w
+
+                if res < 1:
+                    # Construct Robot Path
+                    self.robot_path.append([self.xt[0]+0.05, self.xt[1]+0.05, self.xt[2]])
+                else:
+                    self.robot_path.append([self.xt[0], self.xt[1], self.xt[2]])
         
         return self.robot_path
 
@@ -805,6 +939,9 @@ class Controller:
 
         return b/6 * np.random.uniform(-1,1,12).sum()
 
+
+    # Motion Model Referenced Probabilistic Robotics Table 5.3 (sample_motion_model_velocity)
+    # Additionally referenced "CS W4733 NOTES - Differential Drive Robots" for Instantaneous Center of Rotation + Rotation Matrix
     def x_t(self, x_t_p, u_t, dt):
         """
         :param X_t_p: Current robot state [x, y, theta]
@@ -849,79 +986,176 @@ class Controller:
 
         return x_t
 
+# Grid Resolutions
+Res = 1
 Res2 = 0.1
 
-# robot = Controller(build_grid, Res2, (2.45,-3.55,-np.pi/2), (0.95,-1.55,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
-# robot = Controller(build_grid, Res2, (4.95,-0.05,-np.pi/2),(2.45,0.25,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
-# robot = Controller(build_grid, Res2, (-0.55,1.45,-np.pi/2),(1.95,3.95,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.5)
-robot = Controller(build_grid, Res2, (0.5,-1.5,-np.pi/2), (0.5,1.5,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.5)
-# robot = Controller(build_grid, Res2, (4.5,3.5,-np.pi/2), (4.5,-1.5,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
-# robot = Controller(build_grid, Res2, (-0.5,5.5,-np.pi/2), (1.5,-3.5,np.pi/2), 0.8, obstacle_locations, 0.1, 0.1, 0.3)
+# Coarse Grid Representation Variables
+c_w, c_h, c_grid = build_grid([-2.0,5.0], [-6.0,6.0], Res, obstacle_locations)
+# Fine Grid Representation Variables
+f_w, f_h, f_grid = build_grid([-2.0,5.0], [-6.0,6.0], Res2, obstacle_locations)
 
-path = robot.Traj
 
-x_path = [p[0] for p in path]
-y_path = [p[1] for p in path]
+s_g_list      = [[Res2,(2.45,-3.55),(0.95,-1.55),9], # STEP 7 START-GOAL POSITIONS
+                 [Res2,(4.95,-0.05),(2.45,0.25),9],
+                 [Res2,(-0.55,1.45),(1.95,3.95),9],
+                  
+                 [Res2,(2.45,-3.55),(0.95,-1.55),10], # STEP 7 START-GOAL POSITIONS
+                 [Res2,(4.95,-0.05),(2.45,0.25),10],
+                 [Res2,(-0.55,1.45),(1.95,3.95),10],
+                 
+                 [Res2,(0.5,-1.5),(0.5,1.5),11],       # STEP 3 START-GOAL POSITIONS
+                 [Res2,(4.5,3.5),(4.5,-1.5),11],
+                 [Res2,(-0.5,5.5),(1.5,-3.5),11],
+                 
+                 [Res,(0.5,-1.5),(0.5,1.5),12],       # STEP 3 START-GOAL POSITIONS
+                 [Res,(4.5,3.5),(4.5,-1.5),12],
+                 [Res,(-0.5,5.5),(1.5,-3.5),12]]
 
-for i,p in enumerate(path):
+# Question Number
+q_count = 3
+# Question Part Number
+count = 1
 
-        # Find Corresponding Grid Index of Path Position
-        x_indx = int(np.where(robot.width == p[0])[0][0])
-        y_indx = int(np.where(robot.height == p[1])[0][0])
+# For Each Start-Goal Pair
+for s_g in s_g_list:
+    
+    # Extract Resolution, Start and Goal
+    Res, s, g, Alg_type = s_g
 
-        # If Position is Start Color it Red
-        if i == 0:
-            robot.grid[y_indx][x_indx] = 3    # 3 = Red
+    if Alg_type == 9:
+        robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.8, obstacle_locations, 0.5, 0.1, True, 0.3)
+
+        control_path, ffwd = robot.Offline_PID_Controller()
+
+        plot_title = f"Offline Controller Using Online A* Trajectory (Step 7 Paths) (Res = {Res})"
+        fig_title = f"Question_9_{count}"
+        
+        count += 1
+        if count == 4:
+            count = 1
+
+    elif Alg_type == 10:
+        robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.7, obstacle_locations, 0.5, 0.1, False, 0.2)
+
+        control_path = robot.Online_PID_Controller()
+
+        plot_title = f"Online Controller Using Online A* (Step 7 Paths) (Res = {Res})"
+        fig_title = f"Question_10_{count}"
+        
+        count += 1
+        if count == 4:
+            count = 1
+
+    elif Alg_type == 11:
+        robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.7, obstacle_locations, 0.5, 0.1, False, 0.2)
+
+        control_path = robot.Online_PID_Controller()
+
+        plot_title = f"Online Controller Using Online A* (Step 3 Paths) (Res = {Res})"
+        fig_title = f"Question_11_1_{count}"
+        
+        count += 1
+        if count == 4:
+            count = 1
+
+    elif Alg_type == 12:
+        robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.7, obstacle_locations, 0.5, 0.1, False, 0.2)
+
+        control_path = robot.Online_PID_Controller()
+
+        plot_title = f"Online Controller Using Online A* (Step 3 Paths) (Res = {Res})"
+        fig_title = f"Question_11_2_{count}"
+        
+        count += 1
+        if count == 4:
+            count = 1
+
+    cx =[]
+    cy = []
+    ctheta = []
+
+    for c in control_path:
+        cx.append(c[0])
+        cy.append(c[1])
+        ctheta.append(c[2])
+
+    # Color Map for Grid Position Values (i.e. 0,1,2,3,4)
+    cmap = colors.ListedColormap(['white', 'black', 'orange', 'red', 'lime'])
+
+    # Grid Width and Length for Plot Creation
+    grid_width = robot.grid.shape[1]
+    grid_height = robot.grid.shape[0]
+
+    plt.figure(figsize=(6,10))
+    # Display 2D Grid
+    plt.imshow(robot.grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res - 2 , -6, grid_height*Res - 6])
+    
+    plt.scatter(cx[0], cy[0], c='r', edgecolor='k', label = 'Start', zorder=3)
+    plt.scatter(robot.xg[0], robot.xg[1], c='lime', edgecolor='k', label = 'Goal', zorder=3)
+
+    # plt.plot(ffwd[:, 0], ffwd[:, 1], linewidth=2, label = 'Control Trajectory Path')
+    plt.plot(cx, cy, 'c',linewidth=2, zorder=1, label='Robot Path')
+    num_arrow = 60
+    arrow_theta = np.array(ctheta)
+    x_arrow = np.cos(arrow_theta)
+    y_arrow = np.sin(arrow_theta)
+
+    # Plotting orientated robot chassis
+    plt.quiver(cx[::num_arrow],cy[::num_arrow],x_arrow[::num_arrow],y_arrow[::num_arrow],scale=40, color='blue', width=0.01, zorder=2)
+
+    # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
+    ax = plt.gca()
+
+    # Check that the Value to Label is a Multiple of 0.5 
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
+
+    # Create Grid Lines
+    x_ticks = np.arange(-2, grid_width*Res - 2, Res)
+    y_ticks = np.arange(-6, grid_height*Res - 6, Res)
+    plt.xticks(x_ticks)
+    plt.yticks(y_ticks)
+    plt.grid(True, color='gray', linewidth = Res*1.5)
+
+    # Display Plot
+    plt.title(plot_title)
+    plt.xlabel("X [m]")
+    plt.ylabel("Y [m]")
+    plt.legend()
+    plt.savefig('asgn1/' + fig_title)
+
+    # for o in robot.obstacles:
+                    
+    #     ox, oy, w, h = o
+
+    #     if Res < 1: 
+    #         ox = np.ceil(ox * 10) / 10
+    #         oy = np.ceil(oy * 10) / 10
+
+    #         p1x = np.floor((ox + w/2) * 10) / 10
+    #         p1y = np.floor((oy + h/2) * 10) / 10
+
+    #         p2x = np.floor((ox - w/2) * 10) / 10
+    #         p2y = np.floor((oy - h/2) * 10) / 10
             
-        # If Position is Goal Color it Red
-        elif i == len(path) - 1:
-            robot.grid[y_indx][x_indx] = 4    # 4 = Blue
-            
-        # Otherwise Color the Path green
-        else:
-            robot.grid[y_indx][x_indx] = 2
+    #     else: 
+    #         ox = np.ceil(ox)
+    #         oy = np.ceil(oy)
 
-# control_path, ffwd = robot.Offline_PID_Controller()
-control_path = robot.Online_PID_Controller()
+    #         p1x = np.floor((ox + w/2))
+    #         p1y = np.floor((oy + h/2))
 
-cx =[]
-cy = []
+    #         p2x = np.floor((ox - w/2))
+    #         p2y = np.floor((oy - h/2))
 
-for c in control_path:
-    cx.append(c[0])
-    cy.append(c[1])
+    #     ox -= 0.05
+    #     oy -= 0.05
 
-# Color Map for Grid Position Values (i.e. 0,1,2,3,4)
-cmap = colors.ListedColormap(['white', 'black', 'lime', 'red', 'blue'])
+    #     plt.scatter(ox, oy, c='g')
+    #     plt.scatter(p1x, p1y, c='g')
+    #     plt.scatter(p1x, p2y, c='g')
+    #     plt.scatter(p2x, p1y, c='g')
+    #     plt.scatter(p2x, p2y, c='g')
 
-# Grid Width and Length for Plot Creation
-grid_width = robot.grid.shape[1]
-grid_height = robot.grid.shape[0]
-
-plt.figure(figsize=(6,10))
-# Display 2D Grid
-plt.imshow(robot.grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res2 - 2 , -6, grid_height*Res2 - 6])
-
-# Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
-ax = plt.gca()
-
-# Check that the Value to Label is a Multiple of 0.5 
-ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
-ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
-
-# Create Grid Lines
-x_ticks = np.arange(-2, grid_width*Res2 - 2, Res2)
-y_ticks = np.arange(-6, grid_height*Res2 - 6, Res2)
-plt.xticks(x_ticks)
-plt.yticks(y_ticks)
-plt.grid(True, color='gray', linewidth = Res2*1.5)
-
-# Display Plot
-plt.title("Test")
-plt.xlabel("X [m]")
-plt.ylabel("Y [m]")
-
-# plt.plot(ffwd[:, 0], ffwd[:, 1])
-plt.plot(cx, cy)
-plt.show()
-
+    plt.show()
