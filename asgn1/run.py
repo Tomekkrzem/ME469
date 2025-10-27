@@ -38,7 +38,7 @@ def build_grid(x_range, y_range, res, obstacles = []):
     else: 
         # X-Value Linespace
         width = np.linspace(x_range[0],x_range[1]-1, int((x_range[1] - x_range[0])/res))
-        # Y-Value Linespace
+        # Y-Value Linespace (Had to Be Flipped for Correct Orientation)
         height = np.flip(np.linspace(y_range[0],y_range[1]-1, int((y_range[1] - y_range[0])/res)))
 
         # Truncate the Values in the Linespaces
@@ -245,6 +245,7 @@ def potential_feild_path(PF, res, start, goal, C, fig_title):
     # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
     ax = plt.gca()
 
+    # Plot Start and Goal Points
     plt.scatter(path[0][0] + res/2, path[0][1] + res/2, c='r', edgecolor='k', label = f'Start {s}', zorder=3)
     plt.scatter(path[-1][0] + res/2, path[-1][1] + res/2, c='lime', edgecolor='k', label = f'Goal {g}', zorder=3)
 
@@ -264,7 +265,7 @@ def potential_feild_path(PF, res, start, goal, C, fig_title):
     plt.xlabel("X [m]", fontsize=12)
     plt.ylabel("Y [m]", fontsize=12)
     plt.legend(fontsize=12)
-    plt.savefig('asgn1/' + fig_title + '_PF', bbox_inches='tight')
+    # plt.savefig('asgn1/' + fig_title + '_PF', bbox_inches='tight')
     plt.show()
 
     return p_path
@@ -619,7 +620,7 @@ for s_g in s_g_list_step:
         plot_title = f"A* (Res = {Res})"
         fig_title = f"Question_{q_count}_{count}"
         
-        potential_feild_path(potential_field, Res, s, g, 0.7, fig_title)
+        potential_feild_path(potential_field, Res, s, g, 0.5, fig_title)
 
         count += 1
         if count == 4:
@@ -655,6 +656,7 @@ for s_g in s_g_list_step:
     # Display 2D Grid
     plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res - 2 , -6, grid_height*Res - 6])
     
+    # Plot Start and Goal Points
     plt.scatter(path[0][0] + Res/2, path[0][1] + Res/2, c='r', edgecolor='k', label = f'Start {s}', zorder=3)
     plt.scatter(path[-1][0] + Res/2, path[-1][1] + Res/2, c='lime', edgecolor='k', label = f'Goal {g}', zorder=3)
 
@@ -677,7 +679,7 @@ for s_g in s_g_list_step:
     plt.xlabel("X [m]", fontsize=12)
     plt.ylabel("Y [m]", fontsize=12)
     plt.legend(fontsize=12)
-    plt.savefig('asgn1/' + fig_title, bbox_inches='tight')
+    # plt.savefig('asgn1/' + fig_title, bbox_inches='tight')
     plt.show()
 
 
@@ -1211,8 +1213,7 @@ s_g_list      = [[Res2,(2.45,-3.55),(0.95,-1.55),9], # STEP 7 START-GOAL POSITIO
                  [Res,(4.5,3.5),(4.5,-1.5),12],
                  [Res,(-0.5,5.5),(1.5,-3.5),12]]
 
-# Question Number
-q_count = 3
+
 # Question Part Number
 count = 1
 
@@ -1222,9 +1223,12 @@ for s_g in s_g_list:
     # Extract Resolution, Start and Goal
     Res, s, g, Alg_type = s_g
 
+    # Question 9 Plots
     if Alg_type == 9:
+        # Initialize Controller Values
         robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.8, obstacle_locations, 0.5, 0.1, True, 0.2)
 
+        # Extract Control Path and Trajectory
         control_path, ffwd = robot.Offline_PID_Controller()
 
         plot_title = f"Offline Controller (Step 7 Paths) (Res = {Res})"
@@ -1234,9 +1238,12 @@ for s_g in s_g_list:
         if count == 4:
             count = 1
 
+    # Question 10 Plots
     elif Alg_type == 10:
+        # Initialize Controller Values
         robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.7, obstacle_locations, 0.5, 0.1, False, 0.2)
 
+        # Extract Control Path
         control_path = robot.Online_PID_Controller()
 
         plot_title = f"Online Controller (Step 7 Paths) (Res = {Res})"
@@ -1246,9 +1253,12 @@ for s_g in s_g_list:
         if count == 4:
             count = 1
 
+    # Question 11a Plots
     elif Alg_type == 11:
+        # Initialize Controller Values
         robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.7, obstacle_locations, 0.5, 0.1, False, 0.2)
-
+        
+        # Extract Control Path
         control_path = robot.Online_PID_Controller()
 
         plot_title = f"Online Controller (Step 3 Paths) (Res = {Res})"
@@ -1258,9 +1268,12 @@ for s_g in s_g_list:
         if count == 4:
             count = 1
 
+    # Question 11b Plots
     elif Alg_type == 12:
+        # Initialize Controller Values
         robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.7, obstacle_locations, 0.5, 0.1, False, 0.2)
 
+        # Extract Control Path
         control_path = robot.Online_PID_Controller()
 
         plot_title = f"Online Controller (Step 3 Paths) (Res = {Res})"
@@ -1335,5 +1348,5 @@ for s_g in s_g_list:
     plt.xlabel("X [m]", fontsize=12)
     plt.ylabel("Y [m]", fontsize=12)
     plt.legend(fontsize=12)
-    plt.savefig('asgn1/' + fig_title, bbox_inches='tight')
+    # plt.savefig('asgn1/' + fig_title, bbox_inches='tight')
     plt.show()
