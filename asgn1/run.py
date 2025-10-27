@@ -16,6 +16,12 @@ obstacle_locations = np.column_stack((landmark_data[:,1].T,landmark_data[:,2].T)
 
 # Builds a Graph Populated with Obstacles
 def build_grid(x_range, y_range, res, obstacles = []):
+    """
+    :param x_range: X Range of Grid
+    :param y_range: Y Range of Grid
+    :param res: Resolution
+    :param obstacles: Obstacle in World
+    """
 
     # If Resolution is Finer
     if res < 1:
@@ -91,65 +97,80 @@ def build_grid(x_range, y_range, res, obstacles = []):
     return width, height, grid_vals
 
 def potential_field(Grid, res, goal, sqr_size, C):
+    """
+    :param Grid: Build Grid Function
+    :param res: Resolution
+    :param goal: Goal Position
+    :param sqr_size: Obstacle Size
+    :param C: Attractive Potential Constant
+    """
         
-        # Create a New Grid for the Potential Field
-        width, height, potential_grid = Grid([-2.0,5.0], [-6.0,6.0], res, obstacle_locations)
+    # Create a New Grid for the Potential Field
+    width, height, potential_grid = Grid([-2.0,5.0], [-6.0,6.0], res, obstacle_locations)
 
-        # Represent Each Obstacle by its Center (x,y), and its Width and Height
-        obstacles = [(o[0], o[1], sqr_size, sqr_size) for o in obstacle_locations]
+    # Represent Each Obstacle by its Center (x,y), and its Width and Height
+    obstacles = [(o[0], o[1], sqr_size, sqr_size) for o in obstacle_locations]
 
-        # Create a Mesgrid of the World for Vectorized Computation 
-        Px, Py = np.meshgrid(width, height)
+    # Create a Mesgrid of the World for Vectorized Computation 
+    Px, Py = np.meshgrid(width, height)
 
-        # If the Resolution is Fine Floor the Goal Position Values to One Decimal
+    # If the Resolution is Fine Floor the Goal Position Values to One Decimal
+    if res < 1: 
+        goal = (np.floor(goal[0] * 10) / 10, np.floor(goal[1] * 10) / 10)
+
+    # If the Resolution is Coarses Floor the Goal Position to Zero Decimals
+    else: 
+        goal = (np.floor(goal[0]), np.floor(goal[1]))
+    
+    # Compute the Attractive Potential in Each Cell of the Grid
+    P_goal = C * np.sqrt((Px - goal[0])**2 + (Py - goal[1])**2)
+
+    # Initialize a 2D Array for the Repulsive Potential 
+    P_obs = np.zeros((len(height),len(width)))
+
+    # Loop Through All Obstacles
+    for o in obstacles:
+                
+        # Extract Obstacle Properties
+        ox, oy, w, h = o
+
+        # If Resouliton is Fine
         if res < 1: 
-            goal = (np.floor(goal[0] * 10) / 10, np.floor(goal[1] * 10) / 10)
 
-        # If the Resolution is Coarses Floor the Goal Position to Zero Decimals
+            # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
+            ox = np.ceil(ox * 10) / 10 - 0.05
+            oy = np.ceil(oy * 10) / 10 - 0.05
+
+            # Compute the Distance to the Closet Edge of Each Obsacle
+            # This is Necessary to Account for the Width and Height of the Obstacles
+            dist_to_obs = np.sqrt((np.maximum(np.abs(Px - ox) - w/2, 0))**2 + (np.maximum(np.abs(Py - oy) - h/2, 0))**2)
+
+        # If Resouliton is Coarse
         else: 
-            goal = (np.floor(goal[0]), np.floor(goal[1]))
-        
-        # Compute the Attractive Potential in Each Cell of the Grid
-        P_goal = C * np.sqrt((Px - goal[0])**2 + (Py - goal[1])**2)
+            # Round the Center of the Obstacle
+            ox = np.floor(ox)
+            oy = np.floor(oy)
 
-        # Initialize a 2D Array for the Repulsive Potential 
-        P_obs = np.zeros((len(height),len(width)))
+            # Compute the Distance to the Center of Each Obstacle
+            dist_to_obs = np.sqrt((Px - ox)**2 + (Py - oy)**2)
 
-        # Loop Through All Obstacles
-        for o in obstacles:
-                    
-            # Extract Obstacle Properties
-            ox, oy, w, h = o
+        # Compute the Contribution of Each Obstacle to the Repulsive Potential
+        P_obs += (C-0.3) / (dist_to_obs + 0.1)
 
-            # If Resouliton is Fine
-            if res < 1: 
+    # Update the Potential Field Grid by Adding the Attractive and Repulsive Potentials in Each Cell
+    potential_grid = P_goal + P_obs
 
-                # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
-                ox = np.ceil(ox * 10) / 10 - 0.05
-                oy = np.ceil(oy * 10) / 10 - 0.05
-
-                # Compute the Distance to the Closet Edge of Each Obsacle
-                # This is Necessary to Account for the Width and Height of the Obstacles
-                dist_to_obs = np.sqrt((np.maximum(np.abs(Px - ox) - w/2, 0))**2 + (np.maximum(np.abs(Py - oy) - h/2, 0))**2)
-
-            # If Resouliton is Coarse
-            else: 
-                # Round the Center of the Obstacle
-                ox = np.floor(ox)
-                oy = np.floor(oy)
-
-                # Compute the Distance to the Center of Each Obstacle
-                dist_to_obs = np.sqrt((Px - ox)**2 + (Py - oy)**2)
-
-            # Compute the Contribution of Each Obstacle to the Repulsive Potential
-            P_obs += (C-0.3) / (dist_to_obs + 0.1)
-
-        # Update the Potential Field Grid by Adding the Attractive and Repulsive Potentials in Each Cell
-        potential_grid = P_goal + P_obs
-
-        return width, height, potential_grid
+    return width, height, potential_grid
     
 def potential_feild_path(PF, res, start, goal, C, fig_title):
+    """
+    :param map_vals: Potential Field Funciton
+    :param res: Resolution
+    :param start: Start Position
+    :param goal: Goal Position
+    :param C: Attractive Potential Constant
+    :param fig_title: Figure Title
+    """
 
     # Compute the Potential Field Given the Resolution, Goal Position, Obstacle Size, and Constant for Attractive Potential
     width, height, pf = PF(build_grid, res, goal, 0.7, C)
@@ -272,6 +293,10 @@ def potential_feild_path(PF, res, start, goal, C, fig_title):
 
 # Heuristic Function for A*
 def Heuristic(node_s, node_g):
+    """
+    :param node_s: Current State Position
+    :param node_g: Goal Position
+    """
     
     # Euclidean Distance
     return np.sqrt((node_g[0] - node_s[0])**2 + (node_g[1] - node_s[1])**2)
@@ -279,6 +304,12 @@ def Heuristic(node_s, node_g):
 
 # A* Start Algorithm
 def A_star (map_vals, res, start, goal):
+    """
+    :param map_vals: Grid Values (width, height, grid)
+    :param res: Resolution
+    :param start: Start Position
+    :param goal: Goal Position
+    """
 
     # If the Resolution is Fine Floor the Start and Goal Position Values to One Decimal
     if res < 1: 
@@ -339,7 +370,7 @@ def A_star (map_vals, res, start, goal):
             # Add Goal Node to Closed Set
             closed_set.append(curr_node)
 
-            return closed_set, path
+            return path
 
         # If Node is in Closed Set, Skip
         if curr_node in closed_set:
@@ -402,11 +433,20 @@ def A_star (map_vals, res, start, goal):
                 # Update Parent of Neighbor Node to be Current Node
                 parent[neighbor_node] = curr_node
 
-    return closed_set, []
+    return []
 
 
 # Online A* Cost Function - LRTA_Cost Function Referenced from Articial Intelligence Ch. 4.5.3
 def Online_A_Star_Cost(map_vals, goal, res, s, a, s_prime, H):
+    """
+    :param map_vals: Grid Values (width, height, grid)
+    :param goal: Goal Position
+    :param res: Resolution
+    :param s: Previous State
+    :param a: Previous Action
+    :param s_prime: Current State
+    :param H: Cost Table
+    """
 
     # Extract Map Properties
     w, h, Map = map_vals
@@ -471,6 +511,12 @@ def Online_A_Star_Cost(map_vals, goal, res, s, a, s_prime, H):
 
 # Online A* Function - LRTA_Agent Function Referenced from Articial Intelligence Ch. 4.5.3
 def Online_A_Star(map_vals, res, start, goal):
+    """
+    :param map_vals: Grid Values (width, height, grid)
+    :param res: Resolution
+    :param start: Start Position
+    :param goal: Goal Position
+    """
 
     # If the Resolution is Fine Floor the Start and Goal Position Values to One Decimal
     if res < 1: 
@@ -615,7 +661,7 @@ for s_g in s_g_list_step:
     
     # If Alg_type is 0 Use A_Star
     else:
-        c_set, path = A_star([w,h,grid], Res, s, g)
+        path = A_star([w,h,grid], Res, s, g)
 
         plot_title = f"A* (Res = {Res})"
         fig_title = f"Question_{q_count}_{count}"
@@ -771,6 +817,11 @@ class Controller:
         self.noise = noise
 
     def bezier_curve(self, c_points, num_points, check_collisions):
+        """
+        :param c_points: Control Points Obtained from Input Trajectory
+        :param num_points: Number of Output Trajectory Points
+        :param check_collisions: Boolean to Check Collisions
+        """
 
         # Degree of Bezier Curve
         n = len(c_points) - 1
