@@ -6,10 +6,12 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 import os
 
+# Importing Landmark Dataset for Obstacle Locations
 landmark_dir = os.path.dirname(os.path.abspath(__file__))
 landmark_fp = os.path.join(landmark_dir, "datasets/ds1_Landmark_Groundtruth.dat")
 landmark_data = pd.read_table(landmark_fp, sep=r'\s+', skiprows=3).to_numpy()
 
+# Extracting Landmark Locations
 obstacle_locations = np.column_stack((landmark_data[:,1].T,landmark_data[:,2].T))
 
 # Builds a Graph Populated with Obstacles
@@ -52,6 +54,7 @@ def build_grid(x_range, y_range, res, obstacles = []):
         # Retrieve Obstacle Position
         x,y = o
 
+        # If Resouliton is Fine
         if res < 1:
 
             # Truncate the Position Coordiantes
@@ -71,6 +74,7 @@ def build_grid(x_range, y_range, res, obstacles = []):
             grid_vals[y_indx - 6 : y_indx + 1,
                       x_indx : x_indx + 7] = obstacle_arr
 
+        # If Resouliton is Coarse
         else: 
             
             # Truncate the Position Coordiantes
@@ -86,6 +90,184 @@ def build_grid(x_range, y_range, res, obstacles = []):
 
     return width, height, grid_vals
 
+def potential_field(Grid, res, goal, sqr_size, C):
+        
+        # Create a New Grid for the Potential Field
+        width, height, potential_grid = Grid([-2.0,5.0], [-6.0,6.0], res, obstacle_locations)
+
+        # Represent Each Obstacle by its Center (x,y), and its Width and Height
+        obstacles = [(o[0], o[1], sqr_size, sqr_size) for o in obstacle_locations]
+
+        # Create a Mesgrid of the World for Vectorized Computation 
+        Px, Py = np.meshgrid(width, height)
+
+        # If the Resolution is Fine Floor the Goal Position Values to One Decimal
+        if res < 1: 
+            goal = (np.floor(goal[0] * 10) / 10, np.floor(goal[1] * 10) / 10)
+
+        # If the Resolution is Coarses Floor the Goal Position to Zero Decimals
+        else: 
+            goal = (np.floor(goal[0]), np.floor(goal[1]))
+        
+        # Compute the Attractive Potential in Each Cell of the Grid
+        P_goal = C * np.sqrt((Px - goal[0])**2 + (Py - goal[1])**2)
+
+        # Initialize a 2D Array for the Repulsive Potential 
+        P_obs = np.zeros((len(height),len(width)))
+
+        # Loop Through All Obstacles
+        for o in obstacles:
+                    
+            # Extract Obstacle Properties
+            ox, oy, w, h = o
+
+            # If Resouliton is Fine
+            if res < 1: 
+
+                # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
+                ox = np.ceil(ox * 10) / 10 - 0.05
+                oy = np.ceil(oy * 10) / 10 - 0.05
+
+                # Compute the Distance to the Closet Edge of Each Obsacle
+                # This is Necessary to Account for the Width and Height of the Obstacles
+                dist_to_obs = np.sqrt((np.maximum(np.abs(Px - ox) - w/2, 0))**2 + (np.maximum(np.abs(Py - oy) - h/2, 0))**2)
+
+            # If Resouliton is Coarse
+            else: 
+                # Round the Center of the Obstacle
+                ox = np.floor(ox)
+                oy = np.floor(oy)
+
+                # Compute the Distance to the Center of Each Obstacle
+                dist_to_obs = np.sqrt((Px - ox)**2 + (Py - oy)**2)
+
+            # Compute the Contribution of Each Obstacle to the Repulsive Potential
+            P_obs += (C-0.3) / (dist_to_obs + 0.1)
+
+        # Update the Potential Field Grid by Adding the Attractive and Repulsive Potentials in Each Cell
+        potential_grid = P_goal + P_obs
+
+        return width, height, potential_grid
+    
+def potential_feild_path(PF, res, start, goal, C, fig_title):
+
+    # Compute the Potential Field Given the Resolution, Goal Position, Obstacle Size, and Constant for Attractive Potential
+    width, height, pf = PF(build_grid, res, goal, 0.7, C)
+
+    # Initialize Timeout Counter
+    t = 0   
+
+    # Establish Neighbor Directions
+    neighbor_dirs = [(-res,-res),(-res,0),(-res,res),(0,res),(res,res),(res,0),(res,-res),(0,-res)]
+
+    # If the Resolution is Fine Floor the Start and Goal Position Values to One Decimal
+    if res < 1: 
+        xg = (np.floor(goal[0] * 10) / 10, np.floor(goal[1] * 10) / 10)
+        xt = (np.floor(start[0] * 10) / 10, np.floor(start[1] * 10) / 10)
+
+    # If the Resolution is Coarses Floor the Start and Goal Position to Zero Decimals
+    else: 
+        xg = (np.floor(goal[0]), np.floor(goal[1]))
+        xt = (np.floor(start[0]), np.floor(start[1]))
+
+    # Add the Start Position to the Path
+    p_path = [(float(xt[0]),float(xt[1]))]
+
+    # Establish a Distance Threshold
+    thresh = 0.2
+
+    while np.sqrt((xg[0] - xt[0])**2 + (xg[1] - xt[1])**2) > thresh:
+
+        # Get Potential Value at Current Postition from Potential Field
+        map_x = int(np.where(width == xt[0])[0][0])
+        map_y = int(np.where(height == xt[1])[0][0])
+        min_pot = pf[map_y][map_x]
+
+        # For each Neighbor Direction
+        for n in neighbor_dirs:
+            
+            # If Resolution is Fine Floor the Neighbor X and Y Coordinate Values to One Decimal
+            if res < 1: 
+                nx = round((np.floor(xt[0] * 10) / 10) + n[0],1)
+                ny = round((np.floor(xt[1] * 10) / 10) + n[1],1)
+                
+            # If Resolution is Coarse Floor the Neighbor X and Y Coordinate Values to Zero Decimals
+            else:
+                nx = xt[0] + n[0]
+                ny = xt[1] + n[1]
+
+            # If Out of World Bounds Continue
+            if not (width[0] <= nx <= width[-1] and height[-1] <= ny <= height[0]):
+                continue
+            
+            # Extract Grid Indices of Neighbor Node
+            map_nx = int(np.where(width == nx)[0][0])
+            map_ny = int(np.where(height == ny)[0][0])
+
+            # Compute Temporary Potential Value at Neighbor Position
+            temp_pot = pf[map_ny][map_nx]
+            
+            # If Temporary Potential is Smaller than Current Potential Move to That Position
+            if temp_pot < min_pot:
+                xt_temp = (nx,ny)
+        
+        # Update Current State
+        xt = xt_temp
+
+        # Add Current State to Path
+        p_path.append((float(xt[0]),float(xt[1])))
+
+        # Increment Timeout Counter
+        t += 1
+
+        # If Timeout Counter Reaches 200, the Path was Unable to Converge
+        if t == 200:
+            break
+    
+    # Extract X and Y Coordinates from Path
+    pcx =[]
+    pcy = []
+
+    for c in p_path:
+        pcx.append(c[0] + res/2)
+        pcy.append(c[1] + res/2)
+
+    # Plot Potential Field Path
+    # Grid Width and Length for Plot Creation
+    grid_width = pf.shape[1]
+    grid_height = pf.shape[0]
+
+    plt.figure(figsize=(6,8))
+    # Display 2D Grid
+    plt.imshow(pf, origin='upper', cmap='plasma', extent=[-2, grid_width * res - 2 , -6, grid_height * res - 6])
+    plt.plot(pcx,pcy, c='lime', linewidth=5)
+
+    # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
+    ax = plt.gca()
+
+    plt.scatter(path[0][0] + res/2, path[0][1] + res/2, c='r', edgecolor='k', label = f'Start {s}', zorder=3)
+    plt.scatter(path[-1][0] + res/2, path[-1][1] + res/2, c='lime', edgecolor='k', label = f'Goal {g}', zorder=3)
+
+    # Check that the Value to Label is a Multiple of 0.5 (Matplotlib Documentation)
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
+
+    # Create Grid Lines
+    x_ticks = np.arange(-2, grid_width * res - 2, res)
+    y_ticks = np.arange(-6, grid_height * res - 6, res)
+    plt.xticks(x_ticks)
+    plt.yticks(y_ticks)
+    plt.grid(True, color='gray', linewidth = res * 1.5)
+
+    # Display Plot
+    plt.title(f"Potential Field Path (Res = {res})")
+    plt.xlabel("X [m]", fontsize=12)
+    plt.ylabel("Y [m]", fontsize=12)
+    plt.legend(fontsize=12)
+    plt.savefig('asgn1/' + fig_title + '_PF', bbox_inches='tight')
+    plt.show()
+
+    return p_path
 
 # Heuristic Function for A*
 def Heuristic(node_s, node_g):
@@ -272,7 +454,7 @@ def Online_A_Star_Cost(map_vals, goal, res, s, a, s_prime, H):
             # Use Next Position (s_prim) as State 
             nx = np.floor(s_prime[0] + a[0])
             ny = np.floor(s_prime[1] + a[1])
-
+        
         if not (w[0] <= nx <= w[-1] and h[-1] <= ny <= h[0]):
             return 1000
 
@@ -419,9 +601,13 @@ for s_g in s_g_list_step:
         else: 
             q_count = 5
         
+        # Update Plot Title and Figure Title
         plot_title = f"Online A* (Res = {Res})"
         fig_title = f"Question_{q_count}_{count}"
-        
+
+        # Run the Potential Field Algorithm
+        potential_feild_path(potential_field, Res, s, g, 0.5, fig_title)
+
         count += 1
         if count == 4:
             count = 1
@@ -429,10 +615,12 @@ for s_g in s_g_list_step:
     # If Alg_type is 0 Use A_Star
     else:
         c_set, path = A_star([w,h,grid], Res, s, g)
-                
+
         plot_title = f"A* (Res = {Res})"
         fig_title = f"Question_{q_count}_{count}"
         
+        potential_feild_path(potential_field, Res, s, g, 0.7, fig_title)
+
         count += 1
         if count == 4:
             count = 1
@@ -463,33 +651,33 @@ for s_g in s_g_list_step:
     grid_width = grid.shape[1]
     grid_height = grid.shape[0]
 
-    plt.figure(figsize=(6,10))
+    plt.figure(figsize=(6,8))
     # Display 2D Grid
     plt.imshow(grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res - 2 , -6, grid_height*Res - 6])
     
-    plt.scatter(path[0][0] + Res/2, path[0][1] + Res/2, c='r', edgecolor='k', label = 'Start', zorder=3)
-    plt.scatter(path[-1][0] + Res/2, path[-1][1] + Res/2, c='lime', edgecolor='k', label = 'Goal', zorder=3)
+    plt.scatter(path[0][0] + Res/2, path[0][1] + Res/2, c='r', edgecolor='k', label = f'Start {s}', zorder=3)
+    plt.scatter(path[-1][0] + Res/2, path[-1][1] + Res/2, c='lime', edgecolor='k', label = f'Goal {g}', zorder=3)
 
     # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
     ax = plt.gca()
 
-    # Check that the Value to Label is a Multiple of 0.5 
+    # Check that the Value to Label is a Multiple of 0.5 (Matplotlib Documentation)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
 
     # Create Grid Lines
     x_ticks = np.arange(-2, grid_width*Res - 2, Res)
     y_ticks = np.arange(-6, grid_height*Res - 6, Res)
-    plt.xticks(x_ticks)
-    plt.yticks(y_ticks)
+    plt.xticks(x_ticks, fontsize=10)
+    plt.yticks(y_ticks, fontsize=10)
     plt.grid(True, color='gray', linewidth = Res*1.5)
 
     # Display Plot
     plt.title(plot_title)
-    plt.xlabel("X [m]")
-    plt.ylabel("Y [m]")
-    plt.legend()
-    plt.savefig('asgn1/' + fig_title)
+    plt.xlabel("X [m]", fontsize=12)
+    plt.ylabel("Y [m]", fontsize=12)
+    plt.legend(fontsize=12)
+    plt.savefig('asgn1/' + fig_title, bbox_inches='tight')
     plt.show()
 
 
@@ -498,10 +686,10 @@ class Controller:
 
     def __init__(self, Grid, res, start, goal, sqr_size, o_locs, noise, dt, plot_traj, offset=0.3):
         
+        # Create a Grid for this Controller
         self.width, self.height, self.grid = Grid([-2.0,5.0], [-6.0,6.0], res, o_locs)
 
-        _, _, self.potential_grid = Grid([-2.0,5.0], [-6.0,6.0], res, o_locs)
-
+        # Resolution of Grid
         self.res = res
 
         # Trajectory
@@ -574,7 +762,7 @@ class Controller:
         # Obstacle Clearance Offset for Trajectory Smoothing
         self.obst_off = offset
 
-        # Obstacle Representation for Collision Checking of Smoothed Trajectory
+        # Represent Each Obstacle by its Center (x,y), and its Width and Height
         self.obstacles = [(o[0], o[1], sqr_size, sqr_size) for o in o_locs]
 
         # Movement Noise
@@ -582,16 +770,19 @@ class Controller:
 
     def bezier_curve(self, c_points, num_points, check_collisions):
 
+        # Degree of Bezier Curve
         n = len(c_points) - 1
 
+        # Trajectory Discretization
         t = np.linspace(0, 1, num_points)
 
+        # Initialize Output Curve
         output_curve = np.zeros((num_points, 2))
 
         for i in range(num_points):
             for j in range(n + 1):
                 
-                # Bezier Curve Equation Referenecd From "Path Planning based on Bezier Curve for Autonomous Ground Vehicles"
+                # Bezier Curve Equation Referenecd From "Nerding out with bezier curves"
                 output_curve[i] += c_points[j] * math.comb(n, j) * (t[i] ** j) * ((1 - t[i]) ** (n - j)) 
 
             # If User Specifies Collision Checking
@@ -641,7 +832,6 @@ class Controller:
                             output_curve[i][1] = oy + np.sign(y_to_cy_dist) * (h/2 + self.obst_off)
 
         return output_curve
-
 
     def Offline_PID_Controller(self):
 
@@ -846,8 +1036,19 @@ class Controller:
                 w = (w + np.pi) % (2 * np.pi) - np.pi
 
                 # Limit the Accelerations
-                dv = np.clip(v - self.v_prev, -0.288 * self.dt, 0.288 * self.dt)
-                dw = np.clip(w - self.w_prev, -5.579 * self.dt, 5.579 * self.dt)
+                if (v - self.v_prev) < -0.288 * self.dt:
+                    dv = -0.288 * self.dt
+                elif (v - self.v_prev) > 0.288 * self.dt:
+                    dv = 0.288 * self.dt
+                else: 
+                    dv = v - self.v_prev
+
+                if (w - self.w_prev) < -5.579 * self.dt:
+                    dw = -5.579 * self.dt
+                elif (w - self.w_prev) > 5.579 * self.dt:
+                    dw = 5.579 * self.dt
+                else: 
+                    dw = w - self.w_prev
 
                 # Update Velocites with Limited Accelerations
                 v = self.v_prev + dv
@@ -886,7 +1087,6 @@ class Controller:
                         # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
                         ox = np.ceil(ox)
                         oy = np.ceil(oy)
-
 
                     # X-Distance Between Point and Obstacle Center
                     x_to_cx_dist = temp_xt[0] - ox
@@ -938,7 +1138,6 @@ class Controller:
     def sample(self,b):
 
         return b/6 * np.random.uniform(-1,1,12).sum()
-
 
     # Motion Model Referenced Probabilistic Robotics Table 5.3 (sample_motion_model_velocity)
     # Additionally referenced "CS W4733 NOTES - Differential Drive Robots" for Instantaneous Center of Rotation + Rotation Matrix
@@ -1024,11 +1223,11 @@ for s_g in s_g_list:
     Res, s, g, Alg_type = s_g
 
     if Alg_type == 9:
-        robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.8, obstacle_locations, 0.5, 0.1, True, 0.3)
+        robot = Controller(build_grid, Res, (s[0],s[1],-np.pi/2), (g[0],g[1]), 0.8, obstacle_locations, 0.5, 0.1, True, 0.2)
 
         control_path, ffwd = robot.Offline_PID_Controller()
 
-        plot_title = f"Offline Controller Using Online A* Trajectory (Step 7 Paths) (Res = {Res})"
+        plot_title = f"Offline Controller (Step 7 Paths) (Res = {Res})"
         fig_title = f"Question_9_{count}"
         
         count += 1
@@ -1040,7 +1239,7 @@ for s_g in s_g_list:
 
         control_path = robot.Online_PID_Controller()
 
-        plot_title = f"Online Controller Using Online A* (Step 7 Paths) (Res = {Res})"
+        plot_title = f"Online Controller (Step 7 Paths) (Res = {Res})"
         fig_title = f"Question_10_{count}"
         
         count += 1
@@ -1052,7 +1251,7 @@ for s_g in s_g_list:
 
         control_path = robot.Online_PID_Controller()
 
-        plot_title = f"Online Controller Using Online A* (Step 3 Paths) (Res = {Res})"
+        plot_title = f"Online Controller (Step 3 Paths) (Res = {Res})"
         fig_title = f"Question_11_1_{count}"
         
         count += 1
@@ -1064,17 +1263,19 @@ for s_g in s_g_list:
 
         control_path = robot.Online_PID_Controller()
 
-        plot_title = f"Online Controller Using Online A* (Step 3 Paths) (Res = {Res})"
+        plot_title = f"Online Controller (Step 3 Paths) (Res = {Res})"
         fig_title = f"Question_11_2_{count}"
         
         count += 1
         if count == 4:
             count = 1
 
+    # Initialize X, Y and Theta Arrays
     cx =[]
     cy = []
     ctheta = []
 
+    # Extract X, Y and Theta Coordinates from Path
     for c in control_path:
         cx.append(c[0])
         cy.append(c[1])
@@ -1087,75 +1288,52 @@ for s_g in s_g_list:
     grid_width = robot.grid.shape[1]
     grid_height = robot.grid.shape[0]
 
-    plt.figure(figsize=(6,10))
     # Display 2D Grid
+    plt.figure(figsize=(6,8))
     plt.imshow(robot.grid, cmap=cmap, origin='upper', extent=[-2, grid_width*Res - 2 , -6, grid_height*Res - 6])
-    
-    plt.scatter(cx[0], cy[0], c='r', edgecolor='k', label = 'Start', zorder=3)
-    plt.scatter(robot.xg[0], robot.xg[1], c='lime', edgecolor='k', label = 'Goal', zorder=3)
 
-    # plt.plot(ffwd[:, 0], ffwd[:, 1], linewidth=2, label = 'Control Trajectory Path')
+    # If Resolution is Fine
+    if Res < 1:
+        
+        # Shift Start and Goal Points by Res/2
+        plt.scatter(cx[0] + Res/2, cy[0] + Res/2, c='r', edgecolor='k', label = f'Start {s}', zorder=3)
+        plt.scatter(robot.xg[0] + Res/2, robot.xg[1] + Res/2, c='lime', edgecolor='k', label = f'Goal {g}', zorder=3)
+
+    # If Resolution is Coarse
+    else:  
+
+        # Simply Plot Start and Goal Points
+        plt.scatter(cx[0], cy[0], c='r', edgecolor='k', label = f'Start {s}', zorder=3)
+        plt.scatter(robot.xg[0], robot.xg[1], c='lime', edgecolor='k', label = f'Goal {g}', zorder=3)
+
+    # Add Arrows to Represent Position and Heading of Robot
     plt.plot(cx, cy, 'c',linewidth=2, zorder=1, label='Robot Path')
     num_arrow = 60
     arrow_theta = np.array(ctheta)
     x_arrow = np.cos(arrow_theta)
     y_arrow = np.sin(arrow_theta)
 
-    # Plotting orientated robot chassis
+    # Plotting Orientated Robot Chassis
     plt.quiver(cx[::num_arrow],cy[::num_arrow],x_arrow[::num_arrow],y_arrow[::num_arrow],scale=40, color='blue', width=0.01, zorder=2)
 
     # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
     ax = plt.gca()
 
-    # Check that the Value to Label is a Multiple of 0.5 
+    # Check that the Value to Label is a Multiple of 0.5 (Matplotlib Documentation)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
 
     # Create Grid Lines
     x_ticks = np.arange(-2, grid_width*Res - 2, Res)
     y_ticks = np.arange(-6, grid_height*Res - 6, Res)
-    plt.xticks(x_ticks)
-    plt.yticks(y_ticks)
+    plt.xticks(x_ticks, fontsize=10)
+    plt.yticks(y_ticks, fontsize=10)
     plt.grid(True, color='gray', linewidth = Res*1.5)
 
     # Display Plot
     plt.title(plot_title)
-    plt.xlabel("X [m]")
-    plt.ylabel("Y [m]")
-    plt.legend()
-    plt.savefig('asgn1/' + fig_title)
-
-    # for o in robot.obstacles:
-                    
-    #     ox, oy, w, h = o
-
-    #     if Res < 1: 
-    #         ox = np.ceil(ox * 10) / 10
-    #         oy = np.ceil(oy * 10) / 10
-
-    #         p1x = np.floor((ox + w/2) * 10) / 10
-    #         p1y = np.floor((oy + h/2) * 10) / 10
-
-    #         p2x = np.floor((ox - w/2) * 10) / 10
-    #         p2y = np.floor((oy - h/2) * 10) / 10
-            
-    #     else: 
-    #         ox = np.ceil(ox)
-    #         oy = np.ceil(oy)
-
-    #         p1x = np.floor((ox + w/2))
-    #         p1y = np.floor((oy + h/2))
-
-    #         p2x = np.floor((ox - w/2))
-    #         p2y = np.floor((oy - h/2))
-
-    #     ox -= 0.05
-    #     oy -= 0.05
-
-    #     plt.scatter(ox, oy, c='g')
-    #     plt.scatter(p1x, p1y, c='g')
-    #     plt.scatter(p1x, p2y, c='g')
-    #     plt.scatter(p2x, p1y, c='g')
-    #     plt.scatter(p2x, p2y, c='g')
-
+    plt.xlabel("X [m]", fontsize=12)
+    plt.ylabel("Y [m]", fontsize=12)
+    plt.legend(fontsize=12)
+    plt.savefig('asgn1/' + fig_title, bbox_inches='tight')
     plt.show()

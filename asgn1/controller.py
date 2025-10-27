@@ -181,23 +181,27 @@ plt.plot(cx, cy)
 plt.show()
 
 
-def potential_field(self):
+def potential_field(Grid, res, goal, sqr_size):
         
         C = 0.8
 
-        Px, Py = np.meshgrid(self.width, self.height)
+        width, height, potential_grid = Grid([-2.0,5.0], [-6.0,6.0], res, obstacle_locations)
 
-        P_goal = C * np.sqrt((Px - self.xg[0])**2 + (Py - self.xg[1])**2)
+        obstacles = [(o[0], o[1], sqr_size, sqr_size) for o in obstacle_locations]
 
-        P_obs = np.zeros((len(self.height),len(self.width)))
+        Px, Py = np.meshgrid(width, height)
 
-        for o in self.obstacles:
+        P_goal = C * np.sqrt((Px - goal[0])**2 + (Py - goal[1])**2)
+
+        P_obs = np.zeros((len(height),len(width)))
+
+        for o in obstacles:
                     
             # Extract Obstacle Properties
             ox, oy, w, h = o
 
             # If Resouliton is Fine
-            if self.res < 1: 
+            if res < 1: 
 
                 # Round the Center of the Obstacle and Transform it to the Real Center of the Obstacle
                 ox = np.ceil(ox * 10) / 10 - 0.05
@@ -211,102 +215,96 @@ def potential_field(self):
 
             P_obs += 1 / (dist_to_obs + 0.1)
 
-        self.potential_grid = P_goal + P_obs
+        potential_grid = P_goal + P_obs
 
-        px_grad, py_grad = np.gradient(self.potential_grid)
-
-        return self.potential_grid
+        return width, height, potential_grid
     
-    def potential_feild_path(self):
+def potential_feild_path(PF, res, start, goal):
 
-        pf = self.potential_field()
-        Flag = 0
-        t=0
-        res = self.res
-        neighbor_dirs = [(-res,-res),(-res,0),(-res,res),(0,res),(res,res),(res,0),(res,-res),(0,-res)]
+    width, height, pf = PF
 
-        if res < 1: 
-            self.xg = (np.floor(self.xg[0] * 10) / 10, np.floor(self.xg[1] * 10) / 10)
-            self.xt = (np.floor(self.xt[0] * 10) / 10, np.floor(self.xt[1] * 10) / 10)
-        # If the Resolution is Coarses Floor the Start and Goal Position to Zero Decimals
-        else: 
-            self.xg = (np.floor(self.xg[0]), np.floor(self.xg[1]))
-            self.xt = (np.floor(self.xt[0]), np.floor(self.xt[1]))
+    neighbor_dirs = [(-res,-res),(-res,0),(-res,res),(0,res),(res,res),(res,0),(res,-res),(0,-res)]
 
-        p_path = [(float(self.xt[0]),float(self.xt[1]))]
+    if res < 1: 
+        xg = (np.floor(goal[0] * 10) / 10, np.floor(goal[1] * 10) / 10)
+        xt = (np.floor(start[0] * 10) / 10, np.floor(start[1] * 10) / 10)
+    # If the Resolution is Coarses Floor the Start and Goal Position to Zero Decimals
+    else: 
+        xg = (np.floor(goal[0]), np.floor(goal[1]))
+        xt = (np.floor(start[0]), np.floor(start[1]))
 
-        print(self.xg)
-        thresh = 0.2
+    p_path = [(float(xt[0]),float(xt[1]))]
 
-        while np.sqrt((self.xg[0] - self.xt[0])**2 + (self.xg[1] - self.xt[1])**2) > thresh:
-            if Flag == 0:
+    thresh = 0.2
+
+    while np.sqrt((xg[0] - xt[0])**2 + (xg[1] - xt[1])**2) > thresh:
+
+        map_x = int(np.where(width == xt[0])[0][0])
+        map_y = int(np.where(height == xt[1])[0][0])
+
+        min_pot = pf[map_y][map_x]
+
+
+        # For each Neighbor Direction
+        for n in neighbor_dirs:
+            
+            # If Resolution is Fine Floor the Neighbor X and Y Coordinate Values to One Decimal
+            if res < 1: 
+                nx = round((np.floor(xt[0] * 10) / 10) + n[0],1)
+                ny = round((np.floor(xt[1] * 10) / 10) + n[1],1)
                 
-                map_x = int(np.where(self.width == self.xt[0])[0][0])
-                map_y = int(np.where(self.height == self.xt[1])[0][0])
+            # If Resolution is Coarse Floor the Neighbor X and Y Coordinate Values to Zero Decimals
+            else:
+                nx = np.floor(xt[0] + n[0])
+                ny = np.floor(xt[1] + n[1])
 
-                min_pot = pf[map_y][map_x]
+            if not (width[0] <= nx <= width[-1] and height[-1] <= ny <= height[0]):
+                continue
+            
+            # Extract Grid Indices of Neighbor Node
+            map_nx = int(np.where(width == nx)[0][0])
+            map_ny = int(np.where(height == ny)[0][0])
 
+            temp_pot = pf[map_ny][map_nx]
 
-                # For each Neighbor Direction
-                for n in neighbor_dirs:
-                    
-                    # If Resolution is Fine Floor the Neighbor X and Y Coordinate Values to One Decimal
-                    if res < 1: 
-                        nx = round((np.floor(self.xt[0] * 10) / 10) + n[0],1)
-                        ny = round((np.floor(self.xt[1] * 10) / 10) + n[1],1)
-                        
-                    # If Resolution is Coarse Floor the Neighbor X and Y Coordinate Values to Zero Decimals
-                    else:
-                        nx = np.floor(self.xt[0] + n[0])
-                        ny = np.floor(self.xt[1] + n[1])
+            if temp_pot < min_pot:
+                xt = (nx,ny)
+                p_path.append((float(xt[0]),float(xt[1])))
 
-                    if not (self.width[0] <= nx <= self.width[-1] and self.height[-1] <= ny <= self.height[0]):
-                        continue
-                    
-                    # Extract Grid Indices of Neighbor Node
-                    map_nx = int(np.where(self.width == nx)[0][0])
-                    map_ny = int(np.where(self.height == ny)[0][0])
+    pcx =[]
+    pcy = []
 
-                    temp_pot = pf[map_ny][map_nx]
+    for c in p_path:
+        pcx.append(c[0])
+        pcy.append(c[1])
 
-                    if temp_pot < min_pot:
-                        self.xt = (nx,ny)
-                        p_path.append((float(self.xt[0]),float(self.xt[1])))
+    # Grid Width and Length for Plot Creation
+    grid_width = pf.shape[1]
+    grid_height = pf.shape[0]
 
-        pcx =[]
-        pcy = []
+    plt.figure(figsize=(6,10))
+    # Display 2D Grid
+    plt.imshow(pf, origin='upper', extent=[-2, grid_width * res - 2 , -6, grid_height * res - 6])
+    plt.plot(pcx,pcy, linewidth=3)
 
-        for c in p_path:
-            pcx.append(c[0])
-            pcy.append(c[1])
+    # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
+    ax = plt.gca()
 
-        # Grid Width and Length for Plot Creation
-        grid_width = self.grid.shape[1]
-        grid_height = self.grid.shape[0]
+    # Check that the Value to Label is a Multiple of 0.5 
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
 
-        plt.figure(figsize=(6,10))
-        # Display 2D Grid
-        plt.imshow(pf, origin='upper', extent=[-2, grid_width*Res2 - 2 , -6, grid_height*Res2 - 6])
-        plt.plot(pcx,pcy, linewidth=3)
+    # Create Grid Lines
+    x_ticks = np.arange(-2, grid_width * res - 2, res)
+    y_ticks = np.arange(-6, grid_height * res - 6, res)
+    plt.xticks(x_ticks)
+    plt.yticks(y_ticks)
+    plt.grid(True, color='gray', linewidth = res * 1.5)
 
-        # Label Major Values on Axes (i.e. -6, -5.5, -5, etc.)
-        ax = plt.gca()
+    # Display Plot
+    plt.title("Test")
+    plt.xlabel("X [m]")
+    plt.ylabel("Y [m]")
+    plt.show()
 
-        # Check that the Value to Label is a Multiple of 0.5 
-        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.1f}" if abs(x*2 - round(x*2)) < 1e-6 else ""))
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f"{y:.1f}" if abs(y*2 - round(y*2)) < 1e-6 else ""))
-
-        # Create Grid Lines
-        x_ticks = np.arange(-2, grid_width * Res2 - 2, Res2)
-        y_ticks = np.arange(-6, grid_height * Res2 - 6, Res2)
-        plt.xticks(x_ticks)
-        plt.yticks(y_ticks)
-        plt.grid(True, color='gray', linewidth = Res2 * 1.5)
-
-        # Display Plot
-        plt.title("Test")
-        plt.xlabel("X [m]")
-        plt.ylabel("Y [m]")
-        plt.show()
-
-        return p_path
+    return p_path
