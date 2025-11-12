@@ -99,7 +99,7 @@ class Grid:
                 # Add Obstacles to Map by Setting Value at Associated Position to 1
                 self.Grid[y_indx][x_indx] = 1
 
-    def Plot_Grid(self, grid):
+    def Plot_Grid(self, grid, Title):
         
         self.Build_Grid()
 
@@ -131,7 +131,7 @@ class Grid:
         plt.xlabel("X [m]", fontsize=12)
         plt.ylabel("Y [m]", fontsize=12)
         plt.legend(fontsize=12)
-        # plt.savefig('asgn1/' + fig_title, bbox_inches='tight')
+        plt.savefig('asgn2/' + Title, bbox_inches='tight')
         plt.show()
 
 
@@ -194,10 +194,9 @@ class Q_Learning:
 
         x_indx, y_indx = self.get_Grid_Indices(xt)
 
-        r = 0
-
         goal_dist = math.hypot(xt[0] - self.xg[0], xt[1] - self.xg[1])
         r = -goal_dist * 0.1
+        
         if grid[y_indx, x_indx] == 1:
             r = -10
         elif xt == self.xg:
@@ -310,7 +309,6 @@ class Q_Learning:
 G = Grid([-2.0,5.0], [-6.0,6.0], 0.1, obstacle_locations)
 Gh, Gw = G.Grid.shape
 G.Build_Grid()
-
 QL = Q_Learning(Gh, Gw, (0.5,-1.5),(0.5,1.5), 4000, 0.8, 0.95, 0.3, 0.1,[G.Grid, G.width, G.height])
 QL.Train_Q_Learning()
 path = QL.Optimal_Path()
@@ -334,6 +332,60 @@ for i,p in enumerate(path):
     else:
         G.Grid[y_indx][x_indx] = 2
 
-G.Plot_Grid(G.Grid)
+G.Plot_Grid(G.Grid, "Question5a")
 
+G1 = Grid([-2.0,5.0], [-6.0,6.0], 0.1, obstacle_locations)
+Gh, Gw = G1.Grid.shape
+G1.Build_Grid()
+QL1 = Q_Learning(Gh, Gw, (-0.55,1.45),(1.95,3.95), 4000, 0.8, 0.95, 0.3, 0.1,[G1.Grid, G1.width, G1.height])
+QL1.Train_Q_Learning()
+path = QL1.Optimal_Path()
 
+# Update Path Positons in Grid
+for i,p in enumerate(path):
+    
+    # Find Corresponding Grid Index of Path Position
+    x_indx = int(np.where(G1.width == p[0])[0][0])
+    y_indx = int(np.where(G1.height == p[1])[0][0])
+
+    # If Position is Start Color it Red
+    if i == 0:
+        G1.Grid[y_indx][x_indx] = 3    # 3 = Red
+        
+    # If Position is Goal Color it Red
+    elif i == len(path) - 1:
+        G1.Grid[y_indx][x_indx] = 4    # 4 = Blue
+        
+    # Otherwise Color the Path green
+    else:
+        G1.Grid[y_indx][x_indx] = 2
+
+G1.Plot_Grid(G1.Grid, "Question5b")
+
+G2 = Grid([-2.0,5.0], [-6.0,6.0], 0.1, obstacle_locations)
+Gh, Gw = G2.Grid.shape
+G2.Build_Grid()
+QL2 = Q_Learning(Gh, Gw, (4.95,-0.05),(2.45,0.25), 4000, 0.8, 0.95, 0.3, 0.1,[G2.Grid, G2.width, G2.height])
+QL2.Train_Q_Learning()
+path = QL2.Optimal_Path()
+
+# Update Path Positons in Grid
+for i,p in enumerate(path):
+    
+    # Find Corresponding Grid Index of Path Position
+    x_indx = int(np.where(G2.width == p[0])[0][0])
+    y_indx = int(np.where(G2.height == p[1])[0][0])
+
+    # If Position is Start Color it Red
+    if i == 0:
+        G2.Grid[y_indx][x_indx] = 3    # 3 = Red
+        
+    # If Position is Goal Color it Red
+    elif i == len(path) - 1:
+        G2.Grid[y_indx][x_indx] = 4    # 4 = Blue
+        
+    # Otherwise Color the Path green
+    else:
+        G2.Grid[y_indx][x_indx] = 2
+
+G2.Plot_Grid(G2.Grid, "Question5c")
